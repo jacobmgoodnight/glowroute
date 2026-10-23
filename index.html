@@ -14,7 +14,7 @@
   <title>GlowRoute — Holiday display route planner</title>
 </head>
 <body>
-  <header class="topbar"><div class="brand"><span class="brand-icon">✳</span><div><b>GlowRoute</b><small>Make every festive mile count</small></div></div><span class="version">BETA · V1.2</span></header>
+  <header class="topbar"><div class="brand"><span class="brand-icon">✳</span><div><b>GlowRoute</b><small>Make every festive mile count</small></div></div><span class="version">BETA · V1.3</span></header>
   <main class="layout">
     <section class="panel controls" aria-label="Route planner">
       <div class="panel-heading"><div><p class="eyebrow">PLAN YOUR DRIVE</p><h1>A better route, less backtracking.</h1><p class="subtext">Optimize a holiday display tour using actual driving roads, then open it in your favorite navigation app.</p></div></div>
@@ -28,6 +28,31 @@
           <div class="bulk-actions"><button class="primary" type="submit">Save drive</button><button id="project-cancel" class="secondary" type="button">Cancel</button></div>
         </form></div>
         <div class="project-backup"><button id="projects-export" class="text-button" type="button">↓ Backup all years</button><label class="text-button file-label">↑ Restore backup<input id="projects-import" type="file" accept=".json,application/json"/></label></div>
+      </section>
+      <section class="directory-panel" aria-label="Shared display directory">
+        <div class="section-heading"><div><h2>Display directory</h2><p>Browse editor-maintained public address references. Review before adding or refreshing.</p></div><button id="directory-toggle" class="secondary" type="button">Browse</button></div>
+        <div id="directory-panel" class="hidden directory-inner">
+          <div class="bulk-actions"><button id="directory-load" type="button" class="secondary">↻ Load latest directory</button><button id="directory-refresh-project" type="button" class="secondary">Review updates for this drive</button></div>
+          <div class="field-grid compact"><label class="field">Holiday<select id="directory-season"><option>All</option><option>Halloween</option><option>Christmas</option><option>Other</option></select></label><label class="field">Year<select id="directory-year"><option>All</option><option>2026</option><option>2025</option></select></label></div>
+          <label class="field">Find address or display<input id="directory-search" type="search" placeholder="Street, neighborhood, display..."/></label>
+          <div role="status" id="directory-status" class="hint">No directory loaded yet.</div>
+          <div id="directory-list" class="directory-list">Load the public directory to browse available entries.</div>
+          <div class="bulk-actions"><button id="directory-review-selected" class="primary" type="button">Review selected listings</button></div>
+          <div id="directory-review" class="hidden directory-review"><h3>Review before applying</h3><div id="directory-review-items"></div><div class="bulk-actions"><button id="directory-apply" type="button" class="primary" disabled>Apply reviewed changes</button><button id="directory-cancel" type="button" class="secondary">Cancel</button></div></div>
+          <div class="directory-submit"><button id="submission-toggle" class="secondary" type="button">Suggest a public display or correction ↗</button>
+            <div id="submission-panel" class="hidden"><p class="hint">Suggestions open a public GitHub issue for moderation. Only share an address that's publicly listed or one you have permission to publish.</p>
+              <form id="submission-form" class="project-form">
+                <div class="field-grid compact"><label class="field">Type<select id="submit-type"><option value="suggestion">New display</option><option value="correction">Correction</option></select></label><label class="field">Permission<select id="submit-permission"><option value="public">Public listing suggestion</option><option value="owner">Owner / permitted</option></select></label></div>
+                <label class="field">Display name<input id="submit-name" required maxlength="90" placeholder="Display name"/></label>
+                <label class="field">Public address<input id="submit-address" required maxlength="170" placeholder="123 Main St, Indianapolis, IN"/></label>
+                <div class="field-grid compact"><label class="field">Holiday<select id="submit-holiday"><option>Halloween</option><option>Christmas</option><option>Other</option></select></label><label class="field">Year<input id="submit-year" type="number" min="2000" max="2100" value="2026" required/></label></div>
+                <label class="field">Public source link<input id="submit-source" type="url" required placeholder="https://..."/></label>
+                <label class="field">Dates / operating notes<textarea id="submit-notes" maxlength="300" rows="2"></textarea></label>
+                <button class="primary" type="submit">Open review submission on GitHub ↗</button>
+              </form>
+            </div>
+          </div>
+        </div>
       </section>
       <div class="field-grid">
         <label class="field"><span><span class="dot start"></span> Start</span><input id="start-input" placeholder="Enter a starting address" autocomplete="street-address"/></label>

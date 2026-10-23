@@ -12,7 +12,7 @@ export function cloneProject(previous,{year,name,holiday}={}){
  const newYear=cleanYear(year??previous.year),newHoliday=normalizeHoliday(holiday??previous.holiday);
  const cloned=makeProject({...previous.state,year:newYear,holiday:newHoliday,name:name||`${newHoliday} ${newYear} Drive`,sourceYear:previous.year});
  // Require seasonal reconfirmation without discarding separately verified map coordinates.
- cloned.state.displays=cloned.state.displays.map(d=>({...d,needsSeasonCheck:true,seasonCheckedYear:null}));
+ cloned.state.displays=cloned.state.displays.map(d=>({...d,needsSeasonCheck:true,seasonCheckedYear:null,visited:false,visitedAt:null}));
  return cloned;
 }
 export function revivePortfolio(raw,legacy,seedState){

@@ -103,3 +103,25 @@ python tests/projects_browser.py
 ```
 
 The browser test uses a stubbed map and simulates the app UI at both desktop and mobile widths; it does not verify the live routing/third-party URLs.
+
+## GlowRoute v1.3 — Public directory and reviewed refresh (2026-10-23)
+
+The **Display directory** panel loads `directory/catalog.json` from this GitHub Pages repository. The initial catalog includes only **31 short factual address references** from previously attributed source snapshots: 19 Irvington Halloween 2026 entries and 12 Fishers-area Christmas 2025 *historical* addresses. It is **not a live feed, not a feed from FrightMaps/ChristmasPrism, and not a guarantee that a house is displaying this season**. Each entry includes its source URL, originating season, and last source-review date. Future source feeds should be integrated only with permission and appropriate attribution. Avoid copying original listing photos, long descriptions, or proprietary scores.
+
+- **Browse and review:** Search by street or display, filter by holiday and year, select entries and inspect matches before adding. Entries for a different holiday or year are shown but cannot be imported into the current holiday/year as verified displays.
+- **Refresh current project:** Compare entries for the project's holiday and year. Shows matching, new and metadata-changed items. You choose each change. Existing selected state, private notes, visited state, and manually confirmed geocodes are preserved. Existing customized names/addresses are kept unless **Replace display name and address** is deliberately checked; a changed address invalidates the previous map pin. Missing entries are **never silently removed or classified as closed**.
+- **Visit notes:** Every stop has **Notes** (private per-project notes) and **Visited** buttons. Duplicating into a future year carries notes as a reference but clears that year's visited flags, while keeping the historical original intact. `Backup all years` includes these private fields; handle backups as sensitive location data.
+- **Suggest a listing/correction:** Enter a *publicly advertised* display or one you own/have permission to share; the app opens a **public GitHub issue draft**. You must submit it on GitHub, and a maintainer must review before anything is published. No login or private contact information is collected by GlowRoute itself. Issues, if enabled, are publicly visible and may display submitted residential addresses; don't include anything not intended for public distribution. This is **not an automated submission backend**.
+- **Directory maintenance:** Edit `directory/catalog.json` in GitHub as a code-reviewed change. Schema v1 requires unique stable IDs, unique season/year addresses, display name, full address, season/year, HTTPS source URL and source attribution, with a review timestamp. Do not republish unlicensed third-party databases. New owner-supplied displays should only be accepted with explicit permission to list the residential address; other publicly advertised displays should have an original source URL and review. Offer corrections/removals on request.
+- **Device storage:** Projects and notes still live in the local browser; they do not sync between phone and PC. Directory records are shared through this repository, while **personal project state is never uploaded to it**. Export/import backups to move projects between devices.
+
+### Running directory tests
+
+```sh
+node --test tests/*.test.mjs
+python tests/directory_browser.py
+```
+
+### Still not implemented
+
+There is no approved automatic bulk API sync from FrightMaps, ChristmasPrism, or Indy with Kids. The existing source-link and browser/paste importer remain. The publicly maintained catalog is static until a maintainer merges a change, and suggestion issues are moderated manually. Real-time operating times, permissions, live traffic, user accounts, hosted private backups, and duplicate-road overlap penalties need a future iteration.

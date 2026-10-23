@@ -3,6 +3,7 @@ import {optimize,routeCost,splitLegs,googleDirections,appleDirections} from './o
 import {parseImportedStops,canonicalAddress} from './importer.mjs';
 import {PROJECT_STORE,makeProject,cloneProject,revivePortfolio,snapshotState,uniqueProjectName} from './projects.mjs';
 import {DIRECTORIES,findCatalog,htmlToText} from './catalogs.mjs';
+import {validateDirectory,compareCatalogToProject,applyCatalogToProject,makeSubmissionUrl} from './directory.mjs';
 
 const $=id=>document.getElementById(id);
 const defaultTop5=['ouija','lady','mcblackton','studio','circus'];
@@ -25,6 +26,7 @@ function save(){
  portfolio.activeId=activeProjectId;
  try{localStorage.setItem(PROJECT_STORE,JSON.stringify(portfolio));}catch(error){console.warn('Storage full; export a backup',error);status?.('Local storage is full. Export a project backup so you do not lose changes.','error');}
 }
+let directoryData=null,directorySelection=new Set(),directoryPreview=[],directoryBusy=false;
 let map,markerLayer,routeLayer,currentRoute=null,lastMatrix=null,currentPoints=null,lastGeoStatus=0,pinTarget=null,pinLatLon=null,busy=false;
 
 function status(message,tone='') {const el=$('status');el.textContent=message;el.className='status '+tone;}
@@ -96,12 +98,16 @@ function renderStops(){
    const title=document.createElement('p');title.className='stop-title';title.textContent=item.name;
    const address=document.createElement('p');address.className='stop-address';address.textContent=item.address;
    info.append(title,address);
+   if(item.visited){const visit=document.createElement('span');visit.className='stop-tag ready';visit.textContent='✓ Visited';info.append(visit)}
+   if(item.visitNotes){const note=document.createElement('p');note.className='stop-address';note.textContent=`Note: ${item.visitNotes}`;info.append(note)}
    if(item.sourceUrl){const source=document.createElement('a');source.href=/^https:\/\//i.test(item.sourceUrl)?item.sourceUrl:'#';source.target='_blank';source.rel='noopener noreferrer';source.className='stop-source';source.textContent=`↗ ${item.sourceName||'Source'}${item.sourceYear?' · '+item.sourceYear:''}`;info.append(source)}
    const side=document.createElement('div');side.className='stop-menu';
    if(item.featured){const tag=document.createElement('span');tag.className='stop-tag highlight';tag.textContent='★';tag.title='Editorial highlight';side.append(tag)}
    if(Number.isFinite(item.lat)&&Number.isFinite(item.lon)){
      const tag=document.createElement('span');tag.className='stop-tag '+(item.approved?'ready':'warn');tag.textContent=item.approved?'✓':'≈';tag.title=item.approved?'Confirmed map pin':'Automatic pin: verify accuracy';side.append(tag);
    }
+   const visited=document.createElement('button');visited.textContent=item.visited?'Unvisit':'Visited';visited.title='Mark this house visited on this drive';visited.addEventListener('click',()=>{item.visited=!item.visited;item.visitedAt=item.visited?new Date().toISOString():null;save();renderStops();});side.append(visited);
+   const notes=document.createElement('button');notes.textContent='Notes';notes.title='Add or edit private driving notes';notes.addEventListener('click',()=>{const answer=prompt(`Private notes for ${item.name} (saved only on this device):`,item.visitNotes||'');if(answer===null)return;item.visitNotes=answer.trim().slice(0,500);save();renderStops();});side.append(notes);
    const pin=document.createElement('button');pin.textContent='Pin';pin.title='Place or correct this stop on the map';pin.addEventListener('click',()=>beginPin(item.id));side.append(pin);
    if(item.needsSeasonCheck){const verify=document.createElement('button');verify.className='verify-season';verify.title='Mark this display verified for this season';verify.textContent='Verify ✓';verify.addEventListener('click',()=>{if(!confirm(`Have you checked that “${item.name}” is operating for ${currentProject().holiday} ${currentProject().year}?`))return;item.needsSeasonCheck=false;item.seasonCheckedYear=currentProject().year;save();renderStops();status('Season marked verified for this project.','good');});side.append(verify)}
    const remove=document.createElement('button');remove.textContent='×';remove.title='Remove this stop from this project';remove.setAttribute('aria-label',`Remove ${item.name}`);remove.addEventListener('click',()=>removeStop(item.id));side.append(remove);
@@ -344,7 +350,7 @@ function syncControls(){
 function changeProject(id){
  if(id===activeProjectId)return;
  if(!portfolio.projects.some(p=>p.id===id))return;
- save();activeProjectId=id;state=stateFromProject(currentProject());syncControls();invalidate();renderStops();closeImport();status(`Opened “${currentProject().name}”.`,'good');save();
+ save();$('directory-review').classList.add('hidden');directoryPreview=[];activeProjectId=id;state=stateFromProject(currentProject());syncControls();invalidate();renderStops();closeImport();status(`Opened “${currentProject().name}”.`,'good');save();
 }
 function openProjectEditor(copy=false){
  const source=currentProject();$('project-editor').classList.remove('hidden');$('project-name').value=copy?`${source.holiday} ${Math.max(source.year+1,2026)} Drive`:'';
@@ -396,7 +402,7 @@ function addStop(event){
  status('Added your stop. It will be geocoded when you optimize.','good');
 }
 function exportStops(){
- const records=state.displays.map(({id,name,address,lat,lon,featured,score,approved,geoSource,sourceUrl,sourceName,sourceYear,needsSeasonCheck})=>({id,name,address,lat,lon,featured,score,approved,geoSource,sourceUrl,sourceName,sourceYear,needsSeasonCheck}));
+ const records=state.displays.map(({id,name,address,lat,lon,featured,score,approved,geoSource,sourceUrl,sourceName,sourceYear,needsSeasonCheck,catalogId,visitNotes,visited,visitedAt})=>({id,name,address,lat,lon,featured,score,approved,geoSource,sourceUrl,sourceName,sourceYear,needsSeasonCheck,catalogId,visitNotes,visited,visitedAt}));
  const file=new Blob([JSON.stringify({version:1,displays:records,selected:[...state.selected]},null,2)],{type:'application/json'});
  const url=URL.createObjectURL(file);const a=document.createElement('a');a.href=url;a.download=`glowroute-${currentProject().holiday.toLowerCase()}-${currentProject().year}-stops.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
@@ -502,6 +508,102 @@ function renderDirectories(){const list=$('source-directories');list.replaceChil
  const button=document.createElement('button');button.type='button';button.className='mini-button';button.textContent=source.id.startsWith('indy')?'Review snapshot':'Use URL';button.addEventListener('click',()=>{$('website-url').value=source.url;loadWebsite();});
  row.append(link,button);list.append(row);
  }}
+
+/* v1.3: public JSON directory, with preview and explicit approval for every change. */
+function directoryStatus(message){$('directory-status').textContent=message;}
+async function fetchDirectory(){
+ if(directoryBusy)return;directoryBusy=true;$('directory-load').disabled=true;
+ directoryStatus('Fetching the public directory…');
+ try{
+  const response=await fetch('./directory/catalog.json',{cache:'no-store'});
+  if(!response.ok)throw Error(`Directory returned ${response.status}`);
+  const raw=await response.json();directoryData=validateDirectory(raw);
+  directorySelection.clear();directoryPreview=[];
+  const yearSelect=$('directory-year'),previousYear=yearSelect.value;yearSelect.replaceChildren(new Option('All','All'));
+  for(const year of [...new Set(directoryData.entries.map(e=>e.year))].sort((a,b)=>b-a))yearSelect.append(new Option(String(year),String(year)));
+  if([...yearSelect.options].some(o=>o.value===previousYear))yearSelect.value=previousYear;
+  renderDirectoryList();
+  directoryStatus(`${directoryData.entries.length} catalog entries loaded · last updated ${directoryData.updatedAt}. Public listings do not guarantee a display is operating.`);
+ }catch(error){directoryStatus(`Directory unavailable: ${error.message}. Saved drives still work offline.`);console.warn(error)}
+ finally{directoryBusy=false;$('directory-load').disabled=false;}
+}
+function renderDirectoryList(){
+ const el=$('directory-list');el.replaceChildren();if(!directoryData){el.textContent='Select Load directory to browse the maintained address list.';return;}
+ const q=$('directory-search').value.trim().toLowerCase(),holiday=$('directory-season').value,year=$('directory-year').value;
+ const matches=directoryData.entries.filter(r=>(holiday==='All'||r.holiday===holiday)&&(year==='All'||String(r.year)===year)&&(!q||(`${r.name} ${r.address} ${r.sourceName}`).toLowerCase().includes(q)));
+ const head=document.createElement('p');head.className='hint';head.textContent=`Showing ${matches.length} of ${directoryData.entries.length} listings · ${directorySelection.size} selected. Old-year listings are archives.`;el.append(head);
+ for(const entry of matches){
+  const row=document.createElement('label');row.className='directory-row';
+  const cb=document.createElement('input');cb.type='checkbox';cb.checked=directorySelection.has(entry.id);cb.setAttribute('aria-label',`Select ${entry.name}`);
+  cb.addEventListener('change',()=>{if(cb.checked)directorySelection.add(entry.id);else directorySelection.delete(entry.id);renderDirectoryList()});
+  const info=document.createElement('div');info.className='directory-item';
+  const title=document.createElement('strong');title.textContent=entry.name;
+  const sub=document.createElement('span');sub.textContent=`${entry.address} · ${entry.holiday} ${entry.year}`;
+  const source=document.createElement('a');source.href=entry.sourceUrl;source.target='_blank';source.rel='noopener noreferrer';source.textContent=`Source: ${entry.sourceName} ↗`;source.addEventListener('click',e=>e.stopPropagation());
+  info.append(title,sub,source);row.append(cb,info);el.append(row);
+ }
+}
+function prepareDirectoryReview(mode='selected'){
+ if(!directoryData){directoryStatus('Load the directory first.');return;}
+ const project=currentProject();let entries;
+ if(mode==='refresh')entries=directoryData.entries.filter(r=>r.holiday===project.holiday&&r.year===project.year);
+ else entries=directoryData.entries.filter(r=>directorySelection.has(r.id));
+ if(!entries.length){directoryStatus(mode==='refresh'?`No catalog listings for ${project.holiday} ${project.year}; nothing to refresh.`:'Choose at least one display.');return;}
+ directoryPreview=compareCatalogToProject(project,entries).map(p=>({...p,include:mode==='refresh'?(p.kind!=='already'):(p.kind==='new'),replaceDetails:false}));
+ // Manual-selection preview includes older years, but never marks older-year entries as active.
+ if(mode==='selected'){ 
+  const missing=entries.filter(e=>e.holiday!==project.holiday||e.year!==project.year);
+  for(const e of missing)directoryPreview.push({entry:e,existingId:null,kind:'different-season',include:false});
+ }
+ renderDirectoryReview();$('directory-review').classList.remove('hidden');
+ directoryStatus(`Review ${directoryPreview.length} candidates. Nothing changes until you approve.`);
+}
+function renderDirectoryReview(){
+ const review=$('directory-review-items');review.replaceChildren();
+ const desc=document.createElement('p');desc.className='hint';desc.textContent='Only checked rows will be applied. Matched houses keep your visit notes, visited status and manually approved pins. Older-season entries cannot be added to the current year as verified.';review.append(desc);
+ for(const [i,action] of directoryPreview.entries()){
+  const row=document.createElement('div');row.className='directory-review-row';
+  const label=document.createElement('label');label.className='review-select';
+  const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.checked=action.include;checkbox.disabled=action.kind==='different-season'||action.kind==='already';
+  checkbox.addEventListener('change',()=>{action.include=checkbox.checked;updateDirectoryButton()});
+  const kind=action.kind==='new'?'New':action.kind==='update'?'Update details':action.kind==='already'?'Already matched':'Other year';
+  label.append(checkbox,document.createTextNode(`${kind} · ${action.entry.name}`));
+  const sub=document.createElement('p');sub.className='hint';sub.textContent=`${action.entry.address} · ${action.entry.holiday} ${action.entry.year} · ${action.entry.sourceName}`;
+  row.append(label,sub);
+  if(action.kind==='update'){
+   const opt=document.createElement('label');opt.className='copy-check';const ch=document.createElement('input');ch.type='checkbox';ch.checked=action.replaceDetails;
+   ch.addEventListener('change',()=>{action.replaceDetails=ch.checked});opt.append(ch,document.createTextNode('Replace display name and address with directory values (otherwise retain your version)'));row.append(opt);
+  }
+  review.append(row);
+ }
+ updateDirectoryButton();
+}
+function updateDirectoryButton(){
+ const count=directoryPreview.filter(x=>x.include).length;
+ $('directory-apply').disabled=count===0||count+state.displays.length>70&&directoryPreview.some(x=>x.include&&x.kind==='new');
+ $('directory-apply').textContent=`Apply ${count} reviewed changes`;
+}
+function applyDirectoryReview(){
+ const selected=directoryPreview.filter(x=>x.include);
+ if(!selected.length)return;
+ if(!confirm(`Apply ${selected.length} catalog changes to “${currentProject().name}”? Existing stops and private notes will be retained. Back up all years for extra safety.`))return;
+ try{
+  save();const next=applyCatalogToProject(currentProject(),selected);
+  state.displays=next.displays;state.selected=new Set(next.selected);
+  state.preset='custom';$('preset').value='custom';save();invalidate();renderStops();updateProjectSelect();
+  $('directory-review').classList.add('hidden');directoryPreview=[];
+  directoryStatus(`${next.added} added · ${next.updated} matched listing updates. Display operation still requires verification.`);
+ }catch(error){directoryStatus('Directory changes not saved: '+error.message);}
+}
+function submitDirectorySuggestion(event){
+ event.preventDefault();
+ const form={type:$('submit-type').value,name:$('submit-name').value.trim(),address:$('submit-address').value.trim(),holiday:$('submit-holiday').value,year:$('submit-year').value,sourceUrl:$('submit-source').value.trim(),permission:$('submit-permission').value,notes:$('submit-notes').value.trim()};
+ if(!form.name||!/\b\d{1,6}\s+\S+/.test(form.address)||!/^https:\/\//.test(form.sourceUrl)){directoryStatus('Enter a name, complete street address and HTTPS public source link.');return;}
+ if(!confirm('This opens a PUBLIC GitHub issue. Only submit a home address that is already publicly advertised, or one you own or have permission to share. Do not include private personal details. Continue?'))return;
+ window.open(makeSubmissionUrl(form),'_blank','noopener,noreferrer');
+ directoryStatus('Opened a draft public suggestion on GitHub. Submit the issue there to request moderator review; no listing is auto-published.');
+}
+
 function setEndpoint(key,value){
  state[key]=value;delete state.endpoints[key];save();invalidate();
 }
@@ -535,6 +637,17 @@ function wire(){
  $('website-load').addEventListener('click',loadWebsite);
  $('website-open').addEventListener('click',()=>{try{const u=new URL($('website-url').value);if(u.protocol==='https:')window.open(u.href,'_blank','noopener,noreferrer');}catch{status('Enter a valid website URL.','error')}});
  renderDirectories();
+ $('directory-load').addEventListener('click',fetchDirectory);
+ $('directory-search').addEventListener('input',renderDirectoryList);
+ $('directory-season').addEventListener('change',renderDirectoryList);
+ $('directory-year').addEventListener('change',renderDirectoryList);
+ $('directory-review-selected').addEventListener('click',()=>prepareDirectoryReview('selected'));
+ $('directory-refresh-project').addEventListener('click',()=>prepareDirectoryReview('refresh'));
+ $('directory-apply').addEventListener('click',applyDirectoryReview);
+ $('directory-cancel').addEventListener('click',()=>{$('directory-review').classList.add('hidden');directoryPreview=[];});
+ $('directory-toggle').addEventListener('click',()=>{$('directory-panel').classList.toggle('hidden');if(!directoryData&&!$('directory-panel').classList.contains('hidden'))fetchDirectory();});
+ $('submission-toggle').addEventListener('click',()=>{$('submission-panel').classList.toggle('hidden');});
+ $('submission-form').addEventListener('submit',submitDirectorySuggestion);
  $('import-file').addEventListener('change',loadImportFile);
  $('bulk-text').addEventListener('input',()=>{sourceRecords=null;delete $('bulk-text').dataset.filename;$('import-confirm').disabled=true;});
  $('import-city').addEventListener('input',()=>{$('import-confirm').disabled=true;});

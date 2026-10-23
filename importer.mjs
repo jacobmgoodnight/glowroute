@@ -4,7 +4,7 @@ const CLEAN_CITY = /,?\s*(?:Indianapolis|Irvington|Greenfield|New Palestine|Carm
 const STATE_END = /\b(?:IN|Indiana|IL|OH|KY|MI|WI|MO|CA|NY|FL|TX)\s+\d{5}(?:-\d{4})?$/i;
 const STREET_END = /(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Court|Ct|Way|Circle|Cir|Parkway|Pkwy|Terrace|Ter|Place|Pl)\.?$/i;
 const headerTags=['address','street','location','name','display','city','state','zip','postal'];
-export function canonicalAddress(address){return String(address||'').toLowerCase().replace(/\b(street|st)\b/g,'st').replace(/\b(avenue|ave)\b/g,'ave').replace(/\b(road|rd)\b/g,'rd').replace(/\b(lane|ln)\b/g,'ln').replace(/\b(drive|dr)\b/g,'dr').replace(/\b(boulevard|blvd)\b/g,'blvd').replace(/[.,#]/g,'').replace(/\s+/g,' ').trim();}
+export function canonicalAddress(address){return String(address||'').toLowerCase().replace(/\b(north|n)\b/g,'n').replace(/\b(south|s)\b/g,'s').replace(/\b(east|e)\b/g,'e').replace(/\b(west|w)\b/g,'w').replace(/\b(street|st)\b/g,'st').replace(/\b(avenue|ave)\b/g,'ave').replace(/\b(road|rd)\b/g,'rd').replace(/\b(lane|ln)\b/g,'ln').replace(/\b(drive|dr)\b/g,'dr').replace(/\b(boulevard|blvd)\b/g,'blvd').replace(/[.,#]/g,'').replace(/\s+/g,' ').trim();}
 function clean(value){return String(value??'').replace(/[\u200b\u200c\u200d]/g,'').trim().replace(/^["'`\s•*–—-]+|["'`\s;|–—-]+$/g,'').trim();}
 function normalizeAddress(value,defaultCity){
  let address=clean(value).replace(/\s+/g,' ').replace(/\s+\(.*?\)$/,'').trim();
