@@ -5,7 +5,7 @@ ROOT=os.path.abspath(os.path.join(os.path.dirname(__file__),'..'))
 html=open(ROOT+'/index.html').read();html=re.sub(r'<script type="module" src="\./app.js"></script>','',html)
 html=re.sub(r'<link rel="stylesheet" href="https://unpkg.com/leaflet.*?/>','',html)
 html=html.replace('<link rel="stylesheet" href="./styles.css"/>','<style>'+open(ROOT+'/styles.css').read()+'</style>')
-sources=['data.js','optimizer.mjs','importer.mjs','projects.mjs','catalogs.mjs','app.js']
+sources=['data.js','optimizer.mjs','importer.mjs','projects.mjs','catalogs.mjs','directory.mjs','app.js']
 script='\n'.join(open(ROOT+'/'+f).read() for f in sources)
 script=re.sub(r'^import .*?;\n','',script,flags=re.M)
 script=re.sub(r'\bexport (const|function) ',r'\1 ',script)

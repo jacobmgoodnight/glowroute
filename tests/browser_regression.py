@@ -6,7 +6,7 @@ html=open(ROOT+'/index.html').read()
 html=re.sub(r'<script type="module" src="\./app.js"></script>','',html)
 html=re.sub(r'<link rel="stylesheet" href="https://unpkg.com/leaflet.*?/>','',html)
 html=html.replace('<link rel="stylesheet" href="./styles.css"/>','<style>'+open(ROOT+'/styles.css').read()+'</style>')
-script='\n'.join(open(ROOT+'/'+f).read() for f in ['data.js','optimizer.mjs','importer.mjs','app.js'])
+script='\n'.join(open(ROOT+'/'+f).read() for f in ['data.js','optimizer.mjs','importer.mjs','projects.mjs','catalogs.mjs','directory.mjs','app.js'])
 script=re.sub(r'^import .*?;\n','',script,flags=re.M).replace('export const ','const ').replace('export function ','function ')
 MOCK_MAP='''window.L={
  map:()=>({setView(){return this},on(){},flyTo(){return this},fitBounds(){return this}}),
@@ -46,7 +46,7 @@ with sync_playwright() as p:
   assert '1 already listed' in preview,preview
   page.locator('#import-confirm').click()
   assert page.locator('.stop').count()==27,page.locator('.stop').count()
-  assert page.locator('#stop-count').inner_text()=='2/27'
+  assert page.locator('#stop-count').inner_text()=='12/27'
   assert not errors,errors
   print('PASS:',viewport,'CDN fallback, 25 original houses, preview/duplicates, 2 new addresses')
   page.close()

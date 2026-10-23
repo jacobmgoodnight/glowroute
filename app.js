@@ -454,7 +454,8 @@ function showImportPreview(){
  importIssues=parsed.issues;
  importSourceData(parsed.records,{name:$('bulk-text').dataset.sourceName||'Pasted or uploaded listing',url:$('bulk-text').dataset.sourceUrl||'',year:importOrigin?.year||null});
  importIssues=parsed.issues;
- renderImportRows(`${parsed.records.length} unique addresses recognized · ${parsed.duplicates} duplicates in source`);
+ const already=$('import-mode').value==='replace'?0:parsed.records.filter(rec=>state.displays.some(d=>canonicalAddress(d.address)===canonicalAddress(rec.address))).length;
+ renderImportRows(`${parsed.records.length} unique addresses recognized · ${already} already listed · ${parsed.duplicates} duplicates in source`);
 }
 function closeImport(){$('bulk-panel').classList.add('hidden');pendingImport=[];importOrigin=null;sourceRecords=null;$('import-confirm').disabled=true;}
 async function loadImportFile(event){
