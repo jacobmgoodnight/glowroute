@@ -461,6 +461,8 @@ async function loadWebsite(){
  const value=$('website-url').value.trim();if(!value){status('Enter a source website URL.','error');return;}
  let url;try{url=new URL(value);if(url.protocol!=='https:'||url.username||url.password)throw Error('HTTPS URL required');if(/^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(url.hostname))throw Error('Public websites only')}catch(e){status('Use a public HTTPS listing URL.','error');return;}
  $('bulk-panel').classList.remove('hidden');
+ // Clear any prior source preview before loading a different website.
+ sourceRecords=null;pendingImport=[];importIssues=[];$('import-confirm').disabled=true;$('bulk-preview').textContent='Checking the selected source…';
  const catalog=findCatalog(url.href);
  if(catalog){
   sourceRecords=catalog.records.map(r=>({...r}));
