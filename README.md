@@ -31,7 +31,13 @@ node --test tests/*.test.mjs
 - Inspect the map pins, especially houses marked `≈` in the list. The US Census geocoder may use street interpolation instead of a building entrance. To fix a pin, press **Pin**, click the exact location on the map, then **Done**.
 - Open Apple or Google Maps navigation parts in sequence. **The entire selected tour is optimized before it is divided into navigation legs.** The last stop of one leg becomes the next leg's origin. The final destination is included in the final navigation leg.
 - Dragging isn't implemented in V1, but arrows beside itinerary stops let you adjust an optimized order manually and update the trip.
-- **Import stops** loads additional addresses from a GlowRoute JSON export. **Export stops** saves a backup of display data and edits; selected flags are exported too.
+- **Bulk import / paste list** accepts:
+  - Addresses copied from a community Halloween/Christmas display page, one per line (optionally `Display name — 123 Street Ave` or name on the previous line).
+  - Copied Google Sheets / Excel rows (TSV) with name and address columns.
+  - CSV, TSV, TXT files with a `Name` and `Address` column, or a GlowRoute JSON export.
+  - An optional default city/state for addresses missing those parts.
+  Preview addresses, duplicates, and list capacity before choosing **Add reviewed displays**. Append mode skips stops already in your list; Replace mode intentionally replaces the 25 starter houses. Addresses are not geocoded until you optimize, and imported addresses need validation before driving.
+- **Export stops** saves a backup of display data and edits; selected flags are exported too. Your pasted text and uploaded file content remain local on your device; **GlowRoute does not automatically scrape third-party websites**.
 
 ## How routing works
 
@@ -48,10 +54,16 @@ For maximum compatibility, Google directions links use no more than **three inte
 
 ## Services and usage policies
 
-- **Map UI**: Leaflet 1.9.4 from UNPKG; tiles `tile.openstreetmap.org`, with attribution. Public OSM tiles are not for heavy public app traffic; use a tile provider for scaling.
+- **Map UI**: Leaflet 1.9.4 loaded from UNPKG (with jsDelivr backup), using the correct official CSS integrity checksum; tiles `tile.openstreetmap.org`, with attribution. Public OSM tiles are not for heavy public app traffic; use a tile provider for scaling.
 - **Geocoding**: US Census Geocoder for US house numbers (uses the officially supported JSONP approach because Census blocks CORS; positions may interpolate); OpenStreetMap Nominatim for places and when Census fails. Nominatim calls are limited to ~1 request/sec. No autocomplete; responses are cached locally. Public Nominatim must not power high-volume or commercial apps.
 - **Road routing**: `router.project-osrm.org` is a public **demo** server, suitable for occasional prototype testing but not reliable production use. Configure a supported paid/free-tier routing API, self-host OSRM, or add a backend proxy before promoting this app widely. Never place a private production API key in this public static app.
 - **Privacy**: Selected addresses, endpoints, user-added locations, and calculated geocodes are saved in browser `localStorage` only. Geocoding queries expose location searches to third-party API servers; routing queries expose coordinates. The app does not run an analytics tracker or account system. `Export stops` includes the addresses and coordinates you entered.
+
+## Third-party display-list ingestion roadmap
+
+The browser-only importer is the safe first step. Many third-party websites restrict cross-origin browser requests (CORS), require authorization, or prohibit scraping, so entering a URL cannot reliably or lawfully ingest an arbitrary webpage directly from GitHub Pages.
+
+Next: source-specific, permission-checked import adapters for published CSV/GeoJSON/JSON feeds, with a small optional backend for fetching permissible HTML/RSS. Add source URLs, attribution, collection timestamps, duplicate merging, seasonal dates, and a manual review/approval screen. Avoid Google Maps page scraping and respect terms/licensing. A geocoding backend with quotas and centralized caching will be needed for many users, since public Nominatim and public OSRM are demo/low-volume resources.
 
 ## Known limitations
 
@@ -63,4 +75,4 @@ For maximum compatibility, Google directions links use no more than **three inte
 
 ## Next improvements
 
-Self-hosted routing or serverless proxy with caching; geocode validation and bulk imports; import community display feeds where permitted; house photos/hours/community rankings; repeated-road-overlap penalty and candidate comparison; traffic-aware routing provider; smarter highlight selection under a fixed time budget; route-sharing links.
+Self-hosted routing or serverless proxy with caching; geocode validation and higher-quality import previews; source-specific community display feed integrations where permitted; house photos/hours/community rankings; repeated-road-overlap penalty and candidate comparison; traffic-aware routing provider; smarter highlight selection under a fixed time budget; route-sharing links.

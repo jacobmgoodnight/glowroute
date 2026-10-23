@@ -1,5 +1,6 @@
 import {SEED_DISPLAYS,DEFAULT_START,DEFAULT_END} from './data.js';
 import {optimize,routeCost,splitLegs,googleDirections,appleDirections} from './optimizer.mjs';
+import {parseImportedStops,canonicalAddress} from './importer.mjs';
 
 const $=id=>document.getElementById(id);
 const defaultTop5=['ouija','lady','mcblackton','studio','circus'];
@@ -26,8 +27,26 @@ function getSelected(){return state.displays.filter(x=>state.selected.has(x.id))
 function showResults(visible){$('results').classList.toggle('hidden',!visible)}
 function invalidate(){currentRoute=null;lastMatrix=null;currentPoints=null;routeLayer?.clearLayers();showResults(false);$('estimate').classList.add('hidden');updatePins();}
 
-function initMap(){
- if (!window.L){status('Could not load the map library. Check your connection.','error');return;}
+async function ensureLeaflet(){
+ if(window.L)return;
+ const sources=[
+  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+  'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js'
+ ];
+ for(const source of sources){
+  try{
+   await new Promise((resolve,reject)=>{
+    const script=document.createElement('script');script.src=source;
+    script.onload=resolve;script.onerror=()=>{script.remove();reject(new Error('CDN blocked or unavailable'));};
+    document.head.appendChild(script);
+   });
+   if(window.L)return;
+  }catch(error){console.warn('Map provider unavailable:',source,error)}
+ }
+ throw new Error('Leaflet JavaScript could not be loaded from either provider');
+}
+async function initMap(){
+ try{await ensureLeaflet();}catch(error){status('Could not load the map library. Check your network or content blockers, then reload.','error');mapLabel('Map library unavailable. Your route planner can still calculate stops.');return;}
  map=L.map('map',{zoomControl:false}).setView([39.775,-86.101],12);
  L.control.zoom({position:'bottomleft'}).addTo(map);
  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',maxZoom:19}).addTo(map);
@@ -317,17 +336,52 @@ function exportStops(){
  const file=new Blob([JSON.stringify({version:1,displays:records,selected:[...state.selected]},null,2)],{type:'application/json'});
  const url=URL.createObjectURL(file);const a=document.createElement('a');a.href=url;a.download='glowroute-stops.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
-async function importStops(event){
+let pendingImport=[];
+function showImportPreview(){
+ const panel=$('bulk-preview');panel.replaceChildren();
+ const text=$('bulk-text').value;
+ const parsed=parseImportedStops(text,{defaultCity:$('import-city').value||'Indianapolis, IN 46219',filename:$('bulk-text').dataset.filename||''});
+ const existing=new Set(state.displays.map(d=>canonicalAddress(d.address)));
+ const mode=$('import-mode').value;
+ pendingImport=parsed.records.filter(r=>mode==='replace'||!existing.has(canonicalAddress(r.address)));
+ const skippedExisting=parsed.records.length-pendingImport.length;
+ const available=mode==='replace'?70:70-state.displays.length;
+ const heading=document.createElement('strong');
+ heading.textContent=`${parsed.records.length} unique addresses recognized · ${skippedExisting} already listed · ${parsed.duplicates} duplicates in source`;
+ panel.append(heading);
+ for(const note of parsed.issues){const line=document.createElement('p');line.className='import-warning';line.textContent=note;panel.append(line)}
+ const usable=pendingImport.length>0 && pendingImport.length<=available && parsed.issues.length===0;
+ if(pendingImport.length>available){const error=document.createElement('p');error.className='import-warning';error.textContent=`Only ${available} more stop${available===1?'':'s'} available in this list. Choose Replace or remove some addresses first.`;panel.append(error)}
+ for(const rec of pendingImport.slice(0,12)){
+   const line=document.createElement('div');line.className='import-row';
+   const name=document.createElement('b');name.textContent=rec.name;
+   const address=document.createElement('small');address.textContent=rec.address;
+   line.append(name,address);panel.append(line);
+ }
+ if(pendingImport.length>12){const note=document.createElement('p');note.className='hint';note.textContent=`And ${pendingImport.length-12} more…`;panel.append(note)}
+ $('import-confirm').disabled=!usable;
+ $('import-confirm').textContent=mode==='replace'?'Replace with '+pendingImport.length+' displays':'Add '+pendingImport.length+' reviewed displays';
+}
+function closeImport(){ $('bulk-panel').classList.add('hidden');pendingImport=[]; $('import-confirm').disabled=true; }
+async function loadImportFile(event){
  const file=event.target.files?.[0];if(!file)return;
  try{
-   if(file.size>150_000)throw Error('File too large');
-   const input=JSON.parse(await file.text());if(!Array.isArray(input.displays))throw Error('Invalid format. Expected an object with displays array.');
-   if(input.displays.length>70)throw Error('Max 70 imported stops.');
-   const clean=input.displays.map((d,i)=>({id:`own-import-${i}-${Date.now()}`,name:String(d.name||'Display').slice(0,80),address:String(d.address||'').slice(0,170),lat:Number.isFinite(d.lat)?d.lat:null,lon:Number.isFinite(d.lon)?d.lon:null,geoSource:'imported',approved:false,featured:0,score:3})).filter(d=>d.address.trim());
-   if(!clean.length)throw Error('No valid addresses in file.');
-   state.displays=[...cloneSeed(),...clean].slice(0,70);state.selected=new Set(clean.map(d=>d.id));state.preset='custom';$('preset').value='custom';save();invalidate();renderStops();status(`Imported ${clean.length} additional stops; please verify imported map pins.`,'good');
- }catch(error){status(`Import failed: ${error.message}`,'error');}
+  if(file.size>400_000)throw Error('File is too large (maximum 400 KB).');
+  const content=await file.text();$('bulk-text').value=content;$('bulk-text').dataset.filename=file.name;
+  $('bulk-panel').classList.remove('hidden');showImportPreview();
+  status(`Previewing ${file.name}. Check the addresses before importing.`,'working');
+ }catch(error){status(`Import error: ${error.message}`,'error')}
  event.target.value='';
+}
+function commitImport(){
+ if($('import-confirm').disabled||!pendingImport.length)return;
+ const mode=$('import-mode').value;
+ const oldCount=state.displays.length;
+ const incoming=pendingImport.map(r=>({id:createId(),name:r.name,address:r.address,score:3,lat:r.lat,lon:r.lon,geoSource:r.lat!==null?'imported':null,featured:0,approved:false}));
+ if(mode==='replace'){state.displays=incoming;state.selected=new Set(incoming.map(x=>x.id));}
+ else{state.displays.push(...incoming);state.selected=new Set(incoming.map(x=>x.id));}
+ state.preset='custom';$('preset').value='custom';save();invalidate();renderStops();closeImport();
+ status(`Imported ${incoming.length} new displays${mode==='replace'?', replacing '+oldCount+' previous stops':''}. Verify locations before driving.`,'good');
 }
 function setEndpoint(key,value){
  state[key]=value;delete state.endpoints[key];save();invalidate();
@@ -351,7 +405,14 @@ function wire(){
  $('all-btn').addEventListener('click',()=>{state.selected=new Set(state.displays.map(d=>d.id));state.preset='all';$('preset').value='all';save();invalidate();renderStops();});
  $('clear-btn').addEventListener('click',()=>{state.selected=new Set();state.preset='custom';$('preset').value='custom';save();invalidate();renderStops();});
  $('export-json').addEventListener('click',exportStops);
- $('import-json').addEventListener('change',importStops);
+ $('bulk-toggle').addEventListener('click',()=>{$('bulk-panel').classList.toggle('hidden');});
+ $('import-preview').addEventListener('click',()=>{delete $('bulk-text').dataset.filename;showImportPreview();});
+ $('import-file').addEventListener('change',loadImportFile);
+ $('bulk-text').addEventListener('input',()=>{delete $('bulk-text').dataset.filename;$('import-confirm').disabled=true;});
+ $('import-city').addEventListener('input',()=>{$('import-confirm').disabled=true;});
+ $('import-mode').addEventListener('change',showImportPreview);
+ $('import-confirm').addEventListener('click',commitImport);
+ $('import-cancel').addEventListener('click',closeImport);
  $('fit').addEventListener('click',fitMap);
  renderStops();initMap();
  if('serviceWorker' in navigator && location.protocol==='https:')navigator.serviceWorker.register('./sw.js',{scope:'./'}).catch(console.warn);

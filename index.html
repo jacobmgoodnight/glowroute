@@ -8,13 +8,13 @@
   <link rel="manifest" href="./manifest.webmanifest"/>
   <link rel="icon" href="./assets/icon.svg" type="image/svg+xml"/>
   <link rel="apple-touch-icon" href="./assets/icon-192.png"/>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoKnKWNQ5x04=" crossorigin=""/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" onerror="this.onerror=null;this.removeAttribute('integrity');this.href='https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css'"/>
   <link rel="stylesheet" href="./styles.css"/>
   <script type="module" src="./app.js"></script>
   <title>GlowRoute — Holiday display route planner</title>
 </head>
 <body>
-  <header class="topbar"><div class="brand"><span class="brand-icon">✳</span><div><b>GlowRoute</b><small>Make every festive mile count</small></div></div><span class="version">BETA · V1</span></header>
+  <header class="topbar"><div class="brand"><span class="brand-icon">✳</span><div><b>GlowRoute</b><small>Make every festive mile count</small></div></div><span class="version">BETA · V1.1</span></header>
   <main class="layout">
     <section class="panel controls" aria-label="Route planner">
       <div class="panel-heading"><div><p class="eyebrow">PLAN YOUR DRIVE</p><h1>A better route, less backtracking.</h1><p class="subtext">Optimize a holiday display tour using actual driving roads, then open it in your favorite navigation app.</p></div></div>
@@ -39,7 +39,20 @@
       <div class="section-heading"><div><h2>Displays <span id="stop-count" class="count"></span></h2><p>Uncheck houses to skip them, or add your own.</p></div><button id="add-toggle" class="text-button">+ Add stop</button></div>
       <form id="add-form" class="add-form hidden"><label>Display name<input id="new-name" required maxlength="80" placeholder="Spooky house"/></label><label>Address<input id="new-address" required maxlength="170" placeholder="123 Main St, Indianapolis, IN"/></label><button type="submit" class="secondary">Add to list</button></form>
       <div id="stop-list" class="stop-list"></div>
-      <div class="toolbar"><button id="all-btn" class="text-button">Select all</button><button id="clear-btn" class="text-button">Clear selection</button><button id="export-json" class="text-button">Export stops</button><label class="text-button file-label">Import stops <input type="file" id="import-json" accept=".json,application/json"/></label></div>
+      <div class="toolbar"><button id="all-btn" class="text-button">Select all</button><button id="clear-btn" class="text-button">Clear selection</button><button id="export-json" class="text-button">Export stops</button><button id="bulk-toggle" class="secondary" type="button">⇪ Bulk import / paste list</button></div>
+      <section id="bulk-panel" class="bulk-panel hidden" aria-label="Bulk import displays">
+        <h2>Import multiple displays</h2>
+        <p class="hint">Copy addresses from an event listing, paste rows from a spreadsheet, or upload a CSV, TSV, text, or GlowRoute JSON file. Preview before adding. No automatic website scraping.</p>
+        <label class="field">Default city/state for short addresses<input id="import-city" value="Indianapolis, IN 46219" autocomplete="off"/></label>
+        <label class="field">Paste addresses, one per line, or a copied table<textarea id="bulk-text" rows="7" spellcheck="false" placeholder="McBlackton Manor — 5543 Julian Ave&#10;Studio Fifty Horror — 262 S Audubon Rd&#10;Or paste a spreadsheet with Name and Address columns"></textarea></label>
+        <div class="bulk-actions">
+          <label class="secondary upload-file">Choose CSV / TSV / TXT / JSON<input type="file" id="import-file" accept=".csv,.tsv,.txt,.json,text/plain,text/csv,application/json"/></label>
+          <button id="import-preview" type="button" class="secondary">Preview addresses</button>
+        </div>
+        <div id="bulk-preview" class="bulk-preview" aria-live="polite">Your imported addresses will appear here for review.</div>
+        <label class="field">When importing<select id="import-mode"><option value="append">Add new displays and skip duplicates</option><option value="replace">Replace current display list</option></select></label>
+        <div class="bulk-actions"><button id="import-confirm" type="button" class="primary" disabled>Add reviewed displays</button><button id="import-cancel" type="button" class="secondary">Close</button></div>
+      </section>
     </section>
     <section class="map-area" aria-label="Tour map">
       <div id="map" role="application" aria-label="Map of holiday house displays"></div>
