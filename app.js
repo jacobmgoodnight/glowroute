@@ -1,6 +1,8 @@
 import {SEED_DISPLAYS,DEFAULT_START,DEFAULT_END} from './data.js';
 import {optimize,routeCost,splitLegs,googleDirections,appleDirections} from './optimizer.mjs';
 import {parseImportedStops,canonicalAddress} from './importer.mjs';
+import {PROJECT_STORE,makeProject,cloneProject,revivePortfolio,snapshotState,uniqueProjectName} from './projects.mjs';
+import {DIRECTORIES,findCatalog,htmlToText} from './catalogs.mjs';
 
 const $=id=>document.getElementById(id);
 const defaultTop5=['ouija','lady','mcblackton','studio','circus'];
@@ -9,16 +11,20 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
 const createId=()=>`own-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
 const cloneSeed=()=>SEED_DISPLAYS.map(d=>({...d,lat:null,lon:null,geoSource:null,approved:false}));
 const seedSelections=()=>new Set(SEED_DISPLAYS.filter(d=>d.featured).map(d=>d.id));
-let state={displays:cloneSeed(),selected:seedSelections(),start:DEFAULT_START,end:DEFAULT_END,mode:'duration',preset:'top10',endpoints:{},cache:{}};
-try {
-  const v=JSON.parse(localStorage.getItem(STORE)||'null');
-  if(v && Array.isArray(v.displays) && v.displays.length<=70) {
-    state={...state,...v,selected:new Set(Array.isArray(v.selected)?v.selected:[])};
-    state.displays=state.displays.filter(d=>d&&typeof d.id==='string'&&typeof d.address==='string');
-    state.cache=state.cache||{};state.endpoints=state.endpoints||{};
-  }
-} catch(e){console.warn('Could not restore saved route',e)}
-function save(){try{localStorage.setItem(STORE,JSON.stringify({...state,selected:[...state.selected]}));}catch(e){console.warn('Could not save locally',e)}}
+const seedState=()=>({displays:cloneSeed(),selected:seedSelections(),start:DEFAULT_START,end:DEFAULT_END,mode:'duration',preset:'top10',endpoints:{},cache:{}});
+let legacy=null,rawPortfolio=null;
+try{legacy=JSON.parse(localStorage.getItem(STORE)||'null');rawPortfolio=JSON.parse(localStorage.getItem(PROJECT_STORE)||'null');}catch(e){console.warn('Could not read saved drives',e)}
+let portfolio=revivePortfolio(rawPortfolio,legacy,seedState());
+let activeProjectId=portfolio.activeId;
+let state=stateFromProject(portfolio.projects.find(p=>p.id===activeProjectId));
+function stateFromProject(p){const saved=p?.state||seedState();return {...seedState(),...saved,selected:new Set(Array.isArray(saved.selected)?saved.selected:[]),displays:saved.displays.map(d=>({...d})),endpoints:{...(saved.endpoints||{})},cache:{...(saved.cache||{})}};}
+function currentProject(){return portfolio.projects.find(p=>p.id===activeProjectId)}
+function save(){
+ const project=currentProject();if(!project)return;
+ project.state=snapshotState(state);project.updatedAt=new Date().toISOString();
+ portfolio.activeId=activeProjectId;
+ try{localStorage.setItem(PROJECT_STORE,JSON.stringify(portfolio));}catch(error){console.warn('Storage full; export a backup',error);status?.('Local storage is full. Export a project backup so you do not lose changes.','error');}
+}
 let map,markerLayer,routeLayer,currentRoute=null,lastMatrix=null,currentPoints=null,lastGeoStatus=0,pinTarget=null,pinLatLon=null,busy=false;
 
 function status(message,tone='') {const el=$('status');el.textContent=message;el.className='status '+tone;}
@@ -90,16 +96,24 @@ function renderStops(){
    const title=document.createElement('p');title.className='stop-title';title.textContent=item.name;
    const address=document.createElement('p');address.className='stop-address';address.textContent=item.address;
    info.append(title,address);
+   if(item.sourceUrl){const source=document.createElement('a');source.href=/^https:\/\//i.test(item.sourceUrl)?item.sourceUrl:'#';source.target='_blank';source.rel='noopener noreferrer';source.className='stop-source';source.textContent=`↗ ${item.sourceName||'Source'}${item.sourceYear?' · '+item.sourceYear:''}`;info.append(source)}
    const side=document.createElement('div');side.className='stop-menu';
    if(item.featured){const tag=document.createElement('span');tag.className='stop-tag highlight';tag.textContent='★';tag.title='Editorial highlight';side.append(tag)}
    if(Number.isFinite(item.lat)&&Number.isFinite(item.lon)){
      const tag=document.createElement('span');tag.className='stop-tag '+(item.approved?'ready':'warn');tag.textContent=item.approved?'✓':'≈';tag.title=item.approved?'Confirmed map pin':'Automatic pin: verify accuracy';side.append(tag);
    }
    const pin=document.createElement('button');pin.textContent='Pin';pin.title='Place or correct this stop on the map';pin.addEventListener('click',()=>beginPin(item.id));side.append(pin);
-   if(item.id.startsWith('own-')){const remove=document.createElement('button');remove.textContent='×';remove.title='Delete stop';remove.addEventListener('click',()=>{state.displays=state.displays.filter(d=>d.id!==item.id);state.selected.delete(item.id);save();invalidate();renderStops();});side.append(remove)}
+   if(item.needsSeasonCheck){const verify=document.createElement('button');verify.className='verify-season';verify.title='Mark this display verified for this season';verify.textContent='Verify ✓';verify.addEventListener('click',()=>{if(!confirm(`Have you checked that “${item.name}” is operating for ${currentProject().holiday} ${currentProject().year}?`))return;item.needsSeasonCheck=false;item.seasonCheckedYear=currentProject().year;save();renderStops();status('Season marked verified for this project.','good');});side.append(verify)}
+   const remove=document.createElement('button');remove.textContent='×';remove.title='Remove this stop from this project';remove.setAttribute('aria-label',`Remove ${item.name}`);remove.addEventListener('click',()=>removeStop(item.id));side.append(remove);
    row.append(checkbox,info,side);container.append(row);
  }
  $('stop-count').textContent=`${getSelected().length}/${state.displays.length}`;
+}
+function removeStop(id){
+ const item=state.displays.find(d=>d.id===id);if(!item)return;
+ if(!confirm(`Remove “${item.name}” from this project? Other holiday projects stay unchanged.`))return;
+ state.displays=state.displays.filter(d=>d.id!==id);state.selected.delete(id);
+ state.preset='custom';$('preset').value='custom';save();invalidate();renderStops();status(`Removed ${item.name} from this project.`,'good');
 }
 function beginPin(id){
  if(!map){status('Map is not available; cannot set a pin.','error');return;}
@@ -316,6 +330,56 @@ async function calculate(approx=false){
    if(currentPoints&&currentPoints.every(p=>Number.isFinite(p.lat)))$('estimate').classList.remove('hidden');
  } finally{busy=false;$('optimize').disabled=false;}
 }
+function updateProjectSelect(){
+ const picker=$('project-picker');picker.replaceChildren();
+ const entries=[...portfolio.projects].sort((a,b)=>b.year-a.year||a.holiday.localeCompare(b.holiday));
+ for(const project of entries){const option=new Option(`${project.holiday} ${project.year} · ${project.name}`,project.id);picker.append(option)}
+ picker.value=activeProjectId;
+ const p=currentProject();$('project-detail').textContent=`${p.holiday} ${p.year} · ${state.displays.length} saved displays · stored on this device`;
+}
+function syncControls(){
+ $('start-input').value=state.start;$('end-input').value=state.end;$('mode').value=state.mode;$('preset').value=state.preset;
+ updateProjectSelect();
+}
+function changeProject(id){
+ if(id===activeProjectId)return;
+ if(!portfolio.projects.some(p=>p.id===id))return;
+ save();activeProjectId=id;state=stateFromProject(currentProject());syncControls();invalidate();renderStops();closeImport();status(`Opened “${currentProject().name}”.`,'good');save();
+}
+function openProjectEditor(copy=false){
+ const source=currentProject();$('project-editor').classList.remove('hidden');$('project-name').value=copy?`${source.holiday} ${Math.max(source.year+1,2026)} Drive`:'';
+ $('project-holiday').value=source.holiday;$('project-year').value=copy?Math.min(2100,source.year+1):2026;
+ $('project-copy').checked=copy;$('project-editor').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function createNewProject(e){
+ e.preventDefault();if(portfolio.projects.length>=40){status('Maximum of 40 local projects. Export and archive projects first.','error');return;}
+ const year=Number($('project-year').value),holiday=$('project-holiday').value;
+ if(year<2000||year>2100){status('Enter a valid season year.','error');return;}
+ const name=uniqueProjectName($('project-name').value||`${holiday} ${year} Drive`,portfolio.projects);
+ save();let p;
+ if($('project-copy').checked){p=cloneProject(currentProject(),{year,holiday,name});}
+ else{p=makeProject({name,holiday,year,displays:[],selected:[],start:state.start,end:state.end,preset:'custom'});}
+ portfolio.projects.push(p);activeProjectId=p.id;state=stateFromProject(p);
+ $('project-editor').classList.add('hidden');syncControls();invalidate();renderStops();save();
+ status(`Created ${name}.${p.sourceYear?' Review each previous-year display before driving.':' Add displays using a website, paste, or file.'}`,'good');
+}
+function deleteProject(){
+ if(portfolio.projects.length<2){status('Keep at least one project. Create another before deleting this one.','error');return;}
+ const p=currentProject();if(!confirm(`Delete “${p.name}” and its saved stops from this device? This cannot be undone unless you have a backup.`))return;
+ portfolio.projects=portfolio.projects.filter(x=>x.id!==p.id);activeProjectId=portfolio.projects[0].id;state=stateFromProject(currentProject());syncControls();invalidate();renderStops();save();status('Project deleted.','good');
+}
+function backupProjects(){
+ save();const file=new Blob([JSON.stringify({version:2,exportedAt:new Date().toISOString(),...portfolio},null,2)],{type:'application/json'});
+ const url=URL.createObjectURL(file),a=document.createElement('a');a.href=url;a.download=`glowroute-projects-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
+async function restoreProjects(event){
+ const file=event.target.files?.[0];if(!file)return;
+ try{if(file.size>2_000_000)throw Error('Backup exceeds 2 MB');const data=JSON.parse(await file.text());
+  if(!Array.isArray(data.projects)||data.version!==2||!data.projects.length||data.projects.length>40)throw Error('Not a GlowRoute v2 project backup');
+  const revived=revivePortfolio(data,null,seedState());if(!confirm(`Restore ${revived.projects.length} saved projects? This replaces current projects on this device. Export a backup first if needed.`))return;
+  portfolio=revived;activeProjectId=portfolio.activeId;state=stateFromProject(currentProject());syncControls();invalidate();renderStops();save();status('Projects restored successfully.','good');
+ }catch(error){status('Could not restore project backup: '+error.message,'error')}finally{event.target.value=''}
+}
 function preset(value){
  state.preset=value;
  if(value==='top10')state.selected=new Set(state.displays.filter(x=>x.featured).map(x=>x.id));
@@ -332,83 +396,145 @@ function addStop(event){
  status('Added your stop. It will be geocoded when you optimize.','good');
 }
 function exportStops(){
- const records=state.displays.map(({id,name,address,lat,lon,featured,score,approved,geoSource})=>({id,name,address,lat,lon,featured,score,approved,geoSource}));
+ const records=state.displays.map(({id,name,address,lat,lon,featured,score,approved,geoSource,sourceUrl,sourceName,sourceYear,needsSeasonCheck})=>({id,name,address,lat,lon,featured,score,approved,geoSource,sourceUrl,sourceName,sourceYear,needsSeasonCheck}));
  const file=new Blob([JSON.stringify({version:1,displays:records,selected:[...state.selected]},null,2)],{type:'application/json'});
- const url=URL.createObjectURL(file);const a=document.createElement('a');a.href=url;a.download='glowroute-stops.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+ const url=URL.createObjectURL(file);const a=document.createElement('a');a.href=url;a.download=`glowroute-${currentProject().holiday.toLowerCase()}-${currentProject().year}-stops.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
-let pendingImport=[];
-function showImportPreview(){
- const panel=$('bulk-preview');panel.replaceChildren();
- const text=$('bulk-text').value;
- const parsed=parseImportedStops(text,{defaultCity:$('import-city').value||'Indianapolis, IN 46219',filename:$('bulk-text').dataset.filename||''});
+let pendingImport=[],importIssues=[],importOrigin=null,sourceRecords=null;
+function importSourceData(records,{name='Manual import',url='',year=null,season=null}={}){
+ importOrigin={name,url,year,season};
+ $('bulk-text').dataset.sourceUrl=url;$('bulk-text').dataset.sourceName=name;
  const existing=new Set(state.displays.map(d=>canonicalAddress(d.address)));
  const mode=$('import-mode').value;
- pendingImport=parsed.records.filter(r=>mode==='replace'||!existing.has(canonicalAddress(r.address)));
- const skippedExisting=parsed.records.length-pendingImport.length;
- const available=mode==='replace'?70:70-state.displays.length;
- const heading=document.createElement('strong');
- heading.textContent=`${parsed.records.length} unique addresses recognized · ${skippedExisting} already listed · ${parsed.duplicates} duplicates in source`;
- panel.append(heading);
- for(const note of parsed.issues){const line=document.createElement('p');line.className='import-warning';line.textContent=note;panel.append(line)}
- const usable=pendingImport.length>0 && pendingImport.length<=available && parsed.issues.length===0;
- if(pendingImport.length>available){const error=document.createElement('p');error.className='import-warning';error.textContent=`Only ${available} more stop${available===1?'':'s'} available in this list. Choose Replace or remove some addresses first.`;panel.append(error)}
- for(const rec of pendingImport.slice(0,12)){
-   const line=document.createElement('div');line.className='import-row';
-   const name=document.createElement('b');name.textContent=rec.name;
-   const address=document.createElement('small');address.textContent=rec.address;
-   line.append(name,address);panel.append(line);
+ const unique=new Set();let duplicates=0;
+ pendingImport=[];
+ for(const record of records){const key=canonicalAddress(record.address);if(!key||unique.has(key)){duplicates++;continue}unique.add(key);
+   if(mode!=='replace'&&existing.has(key))continue;
+   pendingImport.push({name:String(record.name||record.address).slice(0,80),address:String(record.address||'').slice(0,170),lat:record.lat??null,lon:record.lon??null,include:true});
  }
- if(pendingImport.length>12){const note=document.createElement('p');note.className='hint';note.textContent=`And ${pendingImport.length-12} more…`;panel.append(note)}
- $('import-confirm').disabled=!usable;
- $('import-confirm').textContent=mode==='replace'?'Replace with '+pendingImport.length+' displays':'Add '+pendingImport.length+' reviewed displays';
+ importIssues=[];
+ const ignored=records.length-pendingImport.length-duplicates;
+ renderImportRows(`${records.length} addresses read · ${ignored} already in this project · ${duplicates} duplicates in the listing`);
 }
-function closeImport(){ $('bulk-panel').classList.add('hidden');pendingImport=[]; $('import-confirm').disabled=true; }
+function renderImportRows(summary='Review each stop before importing'){
+ const panel=$('bulk-preview');panel.replaceChildren();
+ const heading=document.createElement('strong');heading.textContent=summary;panel.append(heading);
+ if(importOrigin){const meta=document.createElement('p');meta.className='hint';meta.textContent=`Source: ${importOrigin.name}${importOrigin.year?' · '+importOrigin.year:''}. ${importOrigin.year&&Number(importOrigin.year)!==currentProject().year?'Different season year — verify before visiting.':''} Listings are not proof a house is active this year.`;panel.append(meta)}
+ for(const note of importIssues){const p=document.createElement('p');p.className='import-warning';p.textContent=note;panel.append(p)}
+ pendingImport.forEach((rec,i)=>{
+  const line=document.createElement('div');line.className='import-review-row';
+  const row=document.createElement('label');row.className='review-select';const cb=document.createElement('input');cb.type='checkbox';cb.checked=rec.include;cb.setAttribute('aria-label',`Include ${rec.name}`);cb.addEventListener('change',()=>{rec.include=cb.checked;updateImportConfirm()});row.append(cb,document.createTextNode(` Stop ${i+1}`));
+  const name=document.createElement('input');name.value=rec.name;name.maxLength=80;name.setAttribute('aria-label',`Display name ${i+1}`);name.addEventListener('input',()=>{rec.name=name.value;updateImportConfirm()});
+  const addr=document.createElement('input');addr.value=rec.address;addr.maxLength=170;addr.setAttribute('aria-label',`Street address ${i+1}`);addr.addEventListener('input',()=>{rec.address=addr.value;rec.lat=null;rec.lon=null;updateImportConfirm()});
+  line.append(row,name,addr);panel.append(line);
+ });
+ updateImportConfirm();
+}
+function updateImportConfirm(){
+ const active=pendingImport.filter(x=>x.include);
+ const allowed=$('import-mode').value==='replace'?70:70-state.displays.length;
+ const seen=new Set();let duplicate=false;
+ const existing=new Set(state.displays.map(d=>canonicalAddress(d.address)));
+ for(const item of active){const address=canonicalAddress(item.address);if(seen.has(address)||$('import-mode').value!=='replace'&&existing.has(address))duplicate=true;seen.add(address)}
+ const bad=active.some(item=>!/\b\d{1,6}\s+[A-Za-z]/.test(item.address)||!item.name.trim());
+ $('import-confirm').disabled=active.length===0||active.length>allowed||duplicate||bad||importIssues.length>0;
+ $('import-confirm').textContent=`${$('import-mode').value==='replace'?'Replace with':'Add'} ${active.length} selected displays`;
+ let warning=$('review-message');if(!warning){warning=document.createElement('p');warning.id='review-message';warning.className='import-warning';$('bulk-preview').append(warning)}
+ warning.textContent=active.length>allowed?`This project has room for only ${allowed} more stops.`:duplicate?'Selected addresses contain duplicates or match existing stops. Uncheck or edit them.':bad?'Some selected stops need a valid name and numbered street address.':'Addresses and display activity still require verification.';
+}
+function showImportPreview(){
+ if(sourceRecords){importSourceData(sourceRecords,importOrigin||{});return;}
+ const parsed=parseImportedStops($('bulk-text').value,{defaultCity:$('import-city').value||'Indianapolis, IN 46219',filename:$('bulk-text').dataset.filename||''});
+ importIssues=parsed.issues;
+ importSourceData(parsed.records,{name:$('bulk-text').dataset.sourceName||'Pasted or uploaded listing',url:$('bulk-text').dataset.sourceUrl||'',year:importOrigin?.year||null});
+ importIssues=parsed.issues;
+ renderImportRows(`${parsed.records.length} unique addresses recognized · ${parsed.duplicates} duplicates in source`);
+}
+function closeImport(){$('bulk-panel').classList.add('hidden');pendingImport=[];importOrigin=null;sourceRecords=null;$('import-confirm').disabled=true;}
 async function loadImportFile(event){
  const file=event.target.files?.[0];if(!file)return;
+ try{if(file.size>400_000)throw Error('Maximum file size 400 KB.');$('bulk-text').value=await file.text();sourceRecords=null;$('bulk-text').dataset.filename=file.name;delete $('bulk-text').dataset.sourceUrl;delete $('bulk-text').dataset.sourceName;importOrigin=null;
+  $('bulk-panel').classList.remove('hidden');showImportPreview();status(`Reviewing ${file.name}.`,'good');
+ }catch(error){status('Import error: '+error.message,'error')}event.target.value='';
+}
+async function loadWebsite(){
+ const value=$('website-url').value.trim();if(!value){status('Enter a source website URL.','error');return;}
+ let url;try{url=new URL(value);if(url.protocol!=='https:'||url.username||url.password)throw Error('HTTPS URL required');if(/^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(url.hostname))throw Error('Public websites only')}catch(e){status('Use a public HTTPS listing URL.','error');return;}
+ $('bulk-panel').classList.remove('hidden');
+ const catalog=findCatalog(url.href);
+ if(catalog){
+  sourceRecords=catalog.records.map(r=>({...r}));
+  importSourceData(catalog.records,{name:catalog.name,url:catalog.url,year:catalog.year,season:catalog.season});
+  $('website-note').textContent=`Loaded ${catalog.records.length} addresses from an attributed ${catalog.year} catalog snapshot (not a live page fetch). Review before importing.`;
+  status(`Loaded reviewed source snapshot: ${catalog.name}.`,'good');return;
+ }
+ $('website-note').textContent='Trying direct browser access. Many directory websites block it for security.';
+ $('website-load').disabled=true;
  try{
-  if(file.size>400_000)throw Error('File is too large (maximum 400 KB).');
-  const content=await file.text();$('bulk-text').value=content;$('bulk-text').dataset.filename=file.name;
-  $('bulk-panel').classList.remove('hidden');showImportPreview();
-  status(`Previewing ${file.name}. Check the addresses before importing.`,'working');
- }catch(error){status(`Import error: ${error.message}`,'error')}
- event.target.value='';
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),9500);
+  let response;try{response=await fetch(url.href,{mode:'cors',credentials:'omit',signal:controller.signal});}finally{clearTimeout(timer)}
+  if(!response.ok)throw Error(`Website returned ${response.status}`);
+  const type=response.headers.get('content-type')||'';if(!/text\/html|text\/plain|text\/csv|application\/json/i.test(type))throw Error('This website does not provide a readable listing');
+  const text=await response.text();if(text.length>400000)throw Error('Listing exceeds the 400 KB import limit');
+  sourceRecords=null;$('bulk-text').value=type.includes('html')?htmlToText(text):text;
+  $('bulk-text').dataset.sourceUrl=url.href;$('bulk-text').dataset.sourceName=url.hostname;delete $('bulk-text').dataset.filename;
+  importOrigin={name:url.hostname,url:url.href,year:currentProject().year};
+  showImportPreview();$('website-note').textContent='Direct page access succeeded. Inspect all addresses before adding.';status('Page retrieved. Check the import preview.','good');
+ }catch(error){
+  $('website-note').textContent='Automatic access was blocked or unavailable (common with browser CORS). Open the source page, copy its visible listing, paste it below, and choose Preview addresses. The source URL will be retained.';
+  $('bulk-text').dataset.sourceUrl=url.href;$('bulk-text').dataset.sourceName=url.hostname;
+  importOrigin={name:url.hostname,url:url.href,year:null};
+  status('Direct website import unavailable. Copy and paste its address list for review; no scraping workaround is used.','error');
+ }finally{$('website-load').disabled=false;}
 }
 function commitImport(){
- if($('import-confirm').disabled||!pendingImport.length)return;
- const mode=$('import-mode').value;
- const oldCount=state.displays.length;
- const incoming=pendingImport.map(r=>({id:createId(),name:r.name,address:r.address,score:3,lat:r.lat,lon:r.lon,geoSource:r.lat!==null?'imported':null,featured:0,approved:false}));
- if(mode==='replace'){state.displays=incoming;state.selected=new Set(incoming.map(x=>x.id));}
- else{state.displays.push(...incoming);state.selected=new Set(incoming.map(x=>x.id));}
- state.preset='custom';$('preset').value='custom';save();invalidate();renderStops();closeImport();
- status(`Imported ${incoming.length} new displays${mode==='replace'?', replacing '+oldCount+' previous stops':''}. Verify locations before driving.`,'good');
+ if($('import-confirm').disabled)return;const active=pendingImport.filter(x=>x.include);
+ const mode=$('import-mode').value,oldCount=state.displays.length;
+ const incoming=active.map(r=>({id:createId(),name:r.name.trim(),address:r.address.trim(),score:3,lat:r.lat,lon:r.lon,geoSource:r.lat!==null?'imported':null,featured:0,approved:false,sourceName:importOrigin?.name||'User import',sourceUrl:importOrigin?.url||'',sourceYear:importOrigin?.year||null,needsSeasonCheck:true}));
+ if(mode==='replace'){if(!confirm(`Replace all ${oldCount} stops in this project with ${incoming.length} reviewed stops? Other projects will be unaffected.`))return;state.displays=incoming;state.selected=new Set(incoming.map(x=>x.id));}
+ else{state.displays.push(...incoming);state.selected=new Set([...state.selected,...incoming.map(x=>x.id)]);}
+ state.preset='custom';$('preset').value='custom';save();invalidate();renderStops();updateProjectSelect();closeImport();status(`Added ${incoming.length} reviewed displays to “${currentProject().name}”. Check their locations and current-year activity.`,'good');
 }
+function renderDirectories(){const list=$('source-directories');list.replaceChildren();for(const source of DIRECTORIES){
+ const row=document.createElement('div');row.className='source-directory';const link=document.createElement('a');link.href=source.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=source.name+' ↗';
+ const button=document.createElement('button');button.type='button';button.className='mini-button';button.textContent=source.id.startsWith('indy')?'Review snapshot':'Use URL';button.addEventListener('click',()=>{$('website-url').value=source.url;loadWebsite();});
+ row.append(link,button);list.append(row);
+ }}
 function setEndpoint(key,value){
  state[key]=value;delete state.endpoints[key];save();invalidate();
 }
 function wire(){
- $('start-input').value=state.start;$('end-input').value=state.end;$('mode').value=state.mode;$('preset').value=state.preset;
+ syncControls();
  $('start-input').addEventListener('change',e=>setEndpoint('start',e.target.value.trim()));
  $('end-input').addEventListener('change',e=>setEndpoint('end',e.target.value.trim()));
  $('mode').addEventListener('change',e=>{state.mode=e.target.value;save();invalidate();});
  $('preset').addEventListener('change',e=>preset(e.target.value));
  $('optimize').addEventListener('click',()=>calculate(false));$('estimate').addEventListener('click',()=>calculate(true));
  $('reset').addEventListener('click',()=>{
-  if(!confirm('Reset your stops and saved locations to the original Irvington list?'))return;
-  try{localStorage.removeItem(STORE)}catch{};
-  state={displays:cloneSeed(),selected:seedSelections(),start:DEFAULT_START,end:DEFAULT_END,mode:'duration',preset:'top10',endpoints:{},cache:{}};
-  $('start-input').value=state.start;$('end-input').value=state.end;$('mode').value=state.mode;$('preset').value=state.preset;
-  save();invalidate();renderStops();status('Reset to the featured 10 Irvington displays.');
+  if(!confirm('Reset only the CURRENT project? Other seasons and years will be preserved.'))return;
+  const p=currentProject();state={...seedState(),displays:p.holiday==='Halloween'&&p.year===2026?cloneSeed():[],selected:p.holiday==='Halloween'&&p.year===2026?seedSelections():new Set(),preset:p.holiday==='Halloween'&&p.year===2026?'top10':'custom',start:state.start,end:state.end};
+  syncControls();save();invalidate();renderStops();status('Current project reset. Other projects are safe.');
  });
+ $('project-picker').addEventListener('change',e=>changeProject(e.target.value));
+ $('project-new').addEventListener('click',()=>openProjectEditor(false));
+ $('project-duplicate').addEventListener('click',()=>openProjectEditor(true));
+ $('project-delete').addEventListener('click',deleteProject);
+ $('project-create-form').addEventListener('submit',createNewProject);
+ $('project-cancel').addEventListener('click',()=>$('project-editor').classList.add('hidden'));
+ $('projects-export').addEventListener('click',backupProjects);
+ $('projects-import').addEventListener('change',restoreProjects);
  $('add-toggle').addEventListener('click',()=>$('add-form').classList.toggle('hidden'));
  $('add-form').addEventListener('submit',addStop);
  $('all-btn').addEventListener('click',()=>{state.selected=new Set(state.displays.map(d=>d.id));state.preset='all';$('preset').value='all';save();invalidate();renderStops();});
  $('clear-btn').addEventListener('click',()=>{state.selected=new Set();state.preset='custom';$('preset').value='custom';save();invalidate();renderStops();});
  $('export-json').addEventListener('click',exportStops);
  $('bulk-toggle').addEventListener('click',()=>{$('bulk-panel').classList.toggle('hidden');});
- $('import-preview').addEventListener('click',()=>{delete $('bulk-text').dataset.filename;showImportPreview();});
+ $('import-preview').addEventListener('click',()=>{showImportPreview();});
+ $('website-load').addEventListener('click',loadWebsite);
+ $('website-open').addEventListener('click',()=>{try{const u=new URL($('website-url').value);if(u.protocol==='https:')window.open(u.href,'_blank','noopener,noreferrer');}catch{status('Enter a valid website URL.','error')}});
+ renderDirectories();
  $('import-file').addEventListener('change',loadImportFile);
- $('bulk-text').addEventListener('input',()=>{delete $('bulk-text').dataset.filename;$('import-confirm').disabled=true;});
+ $('bulk-text').addEventListener('input',()=>{sourceRecords=null;delete $('bulk-text').dataset.filename;$('import-confirm').disabled=true;});
  $('import-city').addEventListener('input',()=>{$('import-confirm').disabled=true;});
  $('import-mode').addEventListener('change',showImportPreview);
  $('import-confirm').addEventListener('click',commitImport);

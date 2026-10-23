@@ -14,10 +14,21 @@
   <title>GlowRoute — Holiday display route planner</title>
 </head>
 <body>
-  <header class="topbar"><div class="brand"><span class="brand-icon">✳</span><div><b>GlowRoute</b><small>Make every festive mile count</small></div></div><span class="version">BETA · V1.1</span></header>
+  <header class="topbar"><div class="brand"><span class="brand-icon">✳</span><div><b>GlowRoute</b><small>Make every festive mile count</small></div></div><span class="version">BETA · V1.2</span></header>
   <main class="layout">
     <section class="panel controls" aria-label="Route planner">
       <div class="panel-heading"><div><p class="eyebrow">PLAN YOUR DRIVE</p><h1>A better route, less backtracking.</h1><p class="subtext">Optimize a holiday display tour using actual driving roads, then open it in your favorite navigation app.</p></div></div>
+      <section class="project-panel" aria-label="Saved holiday projects">
+        <div class="project-top"><label class="field">Saved holiday drive<select id="project-picker" aria-label="Choose saved holiday project"></select></label><p class="hint" id="project-detail"></p></div>
+        <div class="project-actions"><button id="project-new" class="secondary" type="button">+ New drive</button><button id="project-duplicate" class="secondary" type="button">↗ Next year / duplicate</button><button id="project-delete" class="mini-button danger" type="button">Delete</button></div>
+        <div id="project-editor" class="hidden"><form id="project-create-form" class="project-form">
+          <label class="field">Drive name<input id="project-name" maxlength="90" placeholder="Christmas lights with the kids"/></label>
+          <div class="field-grid compact"><label class="field">Holiday<select id="project-holiday"><option>Halloween</option><option>Christmas</option><option>Other</option></select></label><label class="field">Season year<input id="project-year" type="number" min="2000" max="2100" value="2026" required/></label></div>
+          <label class="copy-check"><input id="project-copy" type="checkbox"/> Copy stops from the current drive (mark for seasonal verification)</label>
+          <div class="bulk-actions"><button class="primary" type="submit">Save drive</button><button id="project-cancel" class="secondary" type="button">Cancel</button></div>
+        </form></div>
+        <div class="project-backup"><button id="projects-export" class="text-button" type="button">↓ Backup all years</button><label class="text-button file-label">↑ Restore backup<input id="projects-import" type="file" accept=".json,application/json"/></label></div>
+      </section>
       <div class="field-grid">
         <label class="field"><span><span class="dot start"></span> Start</span><input id="start-input" placeholder="Enter a starting address" autocomplete="street-address"/></label>
         <label class="field"><span><span class="dot end"></span> Finish</span><input id="end-input" placeholder="Enter home or a destination" autocomplete="street-address"/></label>
@@ -42,9 +53,14 @@
       <div class="toolbar"><button id="all-btn" class="text-button">Select all</button><button id="clear-btn" class="text-button">Clear selection</button><button id="export-json" class="text-button">Export stops</button><button id="bulk-toggle" class="secondary" type="button">⇪ Bulk import / paste list</button></div>
       <section id="bulk-panel" class="bulk-panel hidden" aria-label="Bulk import displays">
         <h2>Import multiple displays</h2>
-        <p class="hint">Copy addresses from an event listing, paste rows from a spreadsheet, or upload a CSV, TSV, text, or GlowRoute JSON file. Preview before adding. No automatic website scraping.</p>
+        <p class="hint">Import a known source snapshot, try a source URL that permits browser access, paste a webpage listing, or upload a file. All imported displays require review and seasonal verification.</p>
+        <div class="website-box"><h3>Import from a website</h3><div id="source-directories" class="source-directories"></div>
+          <label class="field">Listing URL<input id="website-url" type="url" placeholder="https://example.com/holiday-displays" autocomplete="url"/></label>
+          <div class="bulk-actions"><button id="website-load" class="secondary" type="button">Load website / source snapshot</button><button id="website-open" class="mini-button" type="button">Open source ↗</button></div>
+          <p id="website-note" class="hint">Supported Indy with Kids pages use an attributed catalog snapshot; other sources are retrieved only if their CORS policy permits it. Copy/paste works when access is blocked.</p>
+        </div>
         <label class="field">Default city/state for short addresses<input id="import-city" value="Indianapolis, IN 46219" autocomplete="off"/></label>
-        <label class="field">Paste addresses, one per line, or a copied table<textarea id="bulk-text" rows="7" spellcheck="false" placeholder="McBlackton Manor — 5543 Julian Ave&#10;Studio Fifty Horror — 262 S Audubon Rd&#10;Or paste a spreadsheet with Name and Address columns"></textarea></label>
+        <label class="field">Paste text copied from the website, one address per line, or a table<textarea id="bulk-text" rows="7" spellcheck="false" placeholder="McBlackton Manor — 5543 Julian Ave&#10;Studio Fifty Horror — 262 S Audubon Rd&#10;Or paste a spreadsheet with Name and Address columns"></textarea></label>
         <div class="bulk-actions">
           <label class="secondary upload-file">Choose CSV / TSV / TXT / JSON<input type="file" id="import-file" accept=".csv,.tsv,.txt,.json,text/plain,text/csv,application/json"/></label>
           <button id="import-preview" type="button" class="secondary">Preview addresses</button>

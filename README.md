@@ -76,3 +76,30 @@ Next: source-specific, permission-checked import adapters for published CSV/GeoJ
 ## Next improvements
 
 Self-hosted routing or serverless proxy with caching; geocode validation and higher-quality import previews; source-specific community display feed integrations where permitted; house photos/hours/community rankings; repeated-road-overlap penalty and candidate comparison; traffic-aware routing provider; smarter highlight selection under a fixed time budget; route-sharing links.
+
+## GlowRoute v1.2: seasonal projects and reviewed website imports
+
+- **Saved projects:** Use **New drive** for independent Halloween, Christmas, or other outings, with separate year, stops, selection, start/end, and geocode data. Existing v1/v1.1 local routes are migrated into **Irvington Halloween 2026**, without overwriting the original v1 store.
+- **Next year / duplicate:** Copy a saved drive into a new year. Each copied listing is marked **Verify season** until you personally confirm it is operating that year. Source dates are preserved on newly imported stops.
+- **Remove any stop:** The X button works for both built-in and imported stops and removes the address only from the current project. The checkbox merely includes/excludes the stop from the present route.
+- **Backup and restore:** Export all projects in one JSON file. Import it on another device to transfer projects. By default, these are **local-only**, not cloud-synced or account-shared.
+- **Import from website:** Under **Bulk import → Import from a website**, known Indy with Kids pages load carefully attributed, explicitly dated **snapshot catalogs** for Halloween 2026 (19 Irvington contest addresses) and a **12-address sample** from its Christmas 2025 archive. These are not a live feed and do not verify that a display is active today. Other HTTPS pages are requested directly from the user's browser only when the third party allows CORS and returns readable text/HTML; otherwise open the original site, copy its listing, paste it, and review the extracted addresses. This app does **not** scrape around site access policies.
+- **Review before add:** Every candidate can be unchecked or have its display name / street address edited. The app checks duplicates and capacity, attributes the source, and asks for confirmation before replacing existing project stops.
+- **Other directories:** FrightMaps (Halloween), ChristmasPrism, and Holiday Light Finder are linked for discovery. Their websites are **not connected** to a direct API or bulk feed. Partner feeds / owner-submitted catalogs are potential follow-up integrations.
+
+### Source data stewardship
+
+The curated catalogs contain short factual display names and street addresses, with source links; they do not reproduce third-party images or long descriptions. Respect each publisher's usage terms. Do not treat prior-year addresses as confirmation that a private home is displaying this year. The goal is to help people visit **publicly offered** holiday displays; don't publish unverified private homes or overwhelm residential streets.
+
+### Hosting
+
+GitHub Pages serves only static files. It cannot fetch arbitrary websites on behalf of a visitor when the browser disallows cross-origin requests. A reliable automated import pipeline would require a separately hosted, rate-limited, publisher-authorized backend with source-specific adapters and data-refresh timestamps. It is intentionally not bundled into this free beta.
+
+### Tests
+
+```bash
+node --test tests/*.test.mjs
+python tests/projects_browser.py
+```
+
+The browser test uses a stubbed map and simulates the app UI at both desktop and mobile widths; it does not verify the live routing/third-party URLs.
