@@ -267,7 +267,7 @@ function renderRouteChoices(){
    const info=document.createElement('div');const title=document.createElement('strong');title.textContent=v.label;
    const detail=document.createElement('small');detail.textContent=`${minutes(v.duration)} · ${miles(v.distance)} · ${v.overlap?miles(v.overlap.repeatedMeters)+' repeated road (estimate)':'overlap unavailable'}`;
    info.append(title,detail);const button=document.createElement('button');button.type='button';button.className=i===currentRoute.variantIndex?'primary':'secondary';button.textContent=i===currentRoute.variantIndex?'Selected':'Choose';
-   button.disabled=busy||i===currentRoute.variantIndex;button.addEventListener('click',async()=>{currentRoute.variantIndex=i;currentRoute.order=v.order.slice();renderRouteSummary();await drawRoute();});row.append(info,button);el.append(row);
+   button.disabled=i===currentRoute.variantIndex;button.addEventListener('click',async()=>{if(busy)return;currentRoute.variantIndex=i;currentRoute.order=v.order.slice();renderRouteSummary();await drawRoute();});row.append(info,button);el.append(row);
  }
 }
 async function fetchRouteGeometry(order){
@@ -335,6 +335,7 @@ function renderItinerary(){
 async function swapStops(i,j){
  if(busy||!currentRoute)return;
  [currentRoute.order[i],currentRoute.order[j]]=[currentRoute.order[j],currentRoute.order[i]];
+ currentRoute.variants=[];currentRoute.variantIndex=0;
  renderRouteSummary();
  await drawRoute();
 }
