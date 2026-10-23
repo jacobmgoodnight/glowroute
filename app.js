@@ -4,6 +4,7 @@ import {parseImportedStops,canonicalAddress} from './importer.mjs';
 import {PROJECT_STORE,makeProject,cloneProject,revivePortfolio,snapshotState,uniqueProjectName} from './projects.mjs';
 import {DIRECTORIES,findCatalog,htmlToText} from './catalogs.mjs';
 import {validateDirectory,compareCatalogToProject,applyCatalogToProject,makeSubmissionUrl} from './directory.mjs';
+import {subsetMatrix,selectWithinBudget,roadOverlap,makeSharePayload,encodeShare,decodeShare} from './tour.mjs';
 
 const $=id=>document.getElementById(id);
 const defaultTop5=['ouija','lady','mcblackton','studio','circus'];
@@ -12,7 +13,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
 const createId=()=>`own-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
 const cloneSeed=()=>SEED_DISPLAYS.map(d=>({...d,lat:null,lon:null,geoSource:null,approved:false}));
 const seedSelections=()=>new Set(SEED_DISPLAYS.filter(d=>d.featured).map(d=>d.id));
-const seedState=()=>({displays:cloneSeed(),selected:seedSelections(),start:DEFAULT_START,end:DEFAULT_END,mode:'duration',preset:'top10',endpoints:{},cache:{}});
+const seedState=()=>({displays:cloneSeed(),selected:seedSelections(),start:DEFAULT_START,end:DEFAULT_END,mode:'duration',preset:'top10',budgetEnabled:false,budgetMinutes:90,viewMinutes:4,endpoints:{},cache:{}});
 let legacy=null,rawPortfolio=null;
 try{legacy=JSON.parse(localStorage.getItem(STORE)||'null');rawPortfolio=JSON.parse(localStorage.getItem(PROJECT_STORE)||'null');}catch(e){console.warn('Could not read saved drives',e)}
 let portfolio=revivePortfolio(rawPortfolio,legacy,seedState());
@@ -28,12 +29,13 @@ function save(){
 }
 let directoryData=null,directorySelection=new Set(),directoryPreview=[],directoryBusy=false;
 let map,markerLayer,routeLayer,currentRoute=null,lastMatrix=null,currentPoints=null,lastGeoStatus=0,pinTarget=null,pinLatLon=null,busy=false;
+let driveActive=false,driveAnchor=null,driveFinish=null,driveRemainingIds=[],sharedIncoming=null;
 
 function status(message,tone='') {const el=$('status');el.textContent=message;el.className='status '+tone;}
 function mapLabel(message){$('map-label').textContent=message;}
 function getSelected(){return state.displays.filter(x=>state.selected.has(x.id));}
 function showResults(visible){$('results').classList.toggle('hidden',!visible)}
-function invalidate(){currentRoute=null;lastMatrix=null;currentPoints=null;routeLayer?.clearLayers();showResults(false);$('estimate').classList.add('hidden');updatePins();}
+function invalidate(){driveActive=false;driveRemainingIds=[];driveAnchor=null;driveFinish=null;updateDrivePanel();currentRoute=null;lastMatrix=null;currentPoints=null;routeLayer?.clearLayers();showResults(false);$('estimate').classList.add('hidden');updatePins();}
 
 async function ensureLeaflet(){
  if(window.L)return;
@@ -98,6 +100,7 @@ function renderStops(){
    const title=document.createElement('p');title.className='stop-title';title.textContent=item.name;
    const address=document.createElement('p');address.className='stop-address';address.textContent=item.address;
    info.append(title,address);
+   if(item.skipped){const skipped=document.createElement('span');skipped.className='stop-tag warn';skipped.textContent='Skipped on last drive';info.append(skipped)}
    if(item.visited){const visit=document.createElement('span');visit.className='stop-tag ready';visit.textContent='✓ Visited';info.append(visit)}
    if(item.visitNotes){const note=document.createElement('p');note.className='stop-address';note.textContent=`Note: ${item.visitNotes}`;info.append(note)}
    if(item.sourceUrl){const source=document.createElement('a');source.href=/^https:\/\//i.test(item.sourceUrl)?item.sourceUrl:'#';source.target='_blank';source.rel='noopener noreferrer';source.className='stop-source';source.textContent=`↗ ${item.sourceName||'Source'}${item.sourceYear?' · '+item.sourceYear:''}`;info.append(source)}
@@ -106,6 +109,15 @@ function renderStops(){
    if(Number.isFinite(item.lat)&&Number.isFinite(item.lon)){
      const tag=document.createElement('span');tag.className='stop-tag '+(item.approved?'ready':'warn');tag.textContent=item.approved?'✓':'≈';tag.title=item.approved?'Confirmed map pin':'Automatic pin: verify accuracy';side.append(tag);
    }
+   const preferences=document.createElement('div');preferences.className='stop-preferences';
+   const favorite=document.createElement('button');favorite.type='button';favorite.textContent=item.favorite?'♥ Saved':'♡ Favorite';favorite.title='Favorite this display';favorite.setAttribute('aria-pressed',String(!!item.favorite));
+   favorite.addEventListener('click',()=>{item.favorite=!item.favorite;save();renderStops();});preferences.append(favorite);
+   const must=document.createElement('button');must.type='button';must.textContent=item.mustSee?'★ Must see':'☆ Must see';must.title='Always include in a time-budget route';must.setAttribute('aria-pressed',String(!!item.mustSee));
+   must.addEventListener('click',()=>{item.mustSee=!item.mustSee;if(item.mustSee){state.selected.add(item.id);state.preset='custom';$('preset').value='custom';}save();invalidate();renderStops();});preferences.append(must);
+   const rating=document.createElement('select');rating.className='rating-select';rating.setAttribute('aria-label',`Your rating for ${item.name}`);rating.title='Your own display rating';
+   for(let n=1;n<=5;n++){const option=new Option(`${n} / 5`,String(n));rating.append(option)}rating.value=String(Number(item.rating)>=1&&Number(item.rating)<=5?item.rating:3);
+   rating.addEventListener('change',()=>{item.rating=Number(rating.value);save();});preferences.append(rating);
+   info.append(preferences);
    const visited=document.createElement('button');visited.textContent=item.visited?'Unvisit':'Visited';visited.title='Mark this house visited on this drive';visited.addEventListener('click',()=>{item.visited=!item.visited;item.visitedAt=item.visited?new Date().toISOString():null;save();renderStops();});side.append(visited);
    const notes=document.createElement('button');notes.textContent='Notes';notes.title='Add or edit private driving notes';notes.addEventListener('click',()=>{const answer=prompt(`Private notes for ${item.name} (saved only on this device):`,item.visitNotes||'');if(answer===null)return;item.visitNotes=answer.trim().slice(0,500);save();renderStops();});side.append(notes);
    const pin=document.createElement('button');pin.textContent='Pin';pin.title='Place or correct this stop on the map';pin.addEventListener('click',()=>beginPin(item.id));side.append(pin);
@@ -240,11 +252,51 @@ function renderMetrics(){
  ];
  $('metrics').replaceChildren();for(const c of cells){const el=document.createElement('div');el.className='metric';const strong=document.createElement('strong');strong.textContent=c.number;const small=document.createElement('span');small.textContent=c.label;el.append(strong,small);$('metrics').append(el)}
  const method=approx?'Straight-line fallback — NOT road-optimized':currentRoute.method==='exact'?'Exact best stop order for the road matrix':'Road-aware heuristic for larger routes';
- $('route-detail').textContent=`${method}. ${saved>0.01?'Improvement over list order: '+(approx?miles(saved):state.mode==='distance'?miles(saved):minutes(saved))+'. ':'Your existing order was already competitive. '}Estimates exclude time spent visiting displays and live traffic.`;
+ const budget=currentRoute.budgetPlan;
+ $('route-detail').textContent=`${method}. ${saved>0.01?'Improvement over list order: '+(approx?miles(saved):state.mode==='distance'?miles(saved):minutes(saved))+'. ':'Your existing order was already competitive. '} ${budget?`Time-budget selection: ${budget.excluded} optional house(s) left out; ${minutes(budget.viewingSeconds)} viewing + ${minutes(budget.drivingSeconds)} driving, ${minutes(budget.totalSeconds)} total. `:''}Road estimates exclude live traffic.`;
 }
 function waypointValue(item){
  if(item.geoSource==='manual')return `${item.lat.toFixed(6)},${item.lon.toFixed(6)}`;
  return item.address;
+}
+function renderRouteChoices(){
+ const el=$('route-choices');if(!el)return;el.replaceChildren();if(!currentRoute||currentRoute.approx){el.textContent='Road comparisons require a road-based route.';return;}
+ const variants=currentRoute.variants||[];if(!variants.length){el.textContent='Comparing mapped road alternatives…';return;}
+ for(const [i,v] of variants.entries()){
+   const row=document.createElement('div');row.className='route-choice';
+   const info=document.createElement('div');const title=document.createElement('strong');title.textContent=v.label;
+   const detail=document.createElement('small');detail.textContent=`${minutes(v.duration)} · ${miles(v.distance)} · ${v.overlap?miles(v.overlap.repeatedMeters)+' repeated road (estimate)':'overlap unavailable'}`;
+   info.append(title,detail);const button=document.createElement('button');button.type='button';button.className=i===currentRoute.variantIndex?'primary':'secondary';button.textContent=i===currentRoute.variantIndex?'Selected':'Choose';
+   button.disabled=busy||i===currentRoute.variantIndex;button.addEventListener('click',async()=>{currentRoute.variantIndex=i;currentRoute.order=v.order.slice();renderRouteSummary();await drawRoute();});row.append(info,button);el.append(row);
+ }
+}
+async function fetchRouteGeometry(order){
+ const arr=[currentPoints[0],...order.map(i=>currentPoints[i]),currentPoints.at(-1)];
+ const response=await fetch(`https://router.project-osrm.org/route/v1/driving/${locationPath(arr)}?overview=full&geometries=geojson&steps=false`);
+ if(!response.ok)throw Error(`Road drawing returned ${response.status}`);
+ const json=await response.json();const found=json.routes?.[0];
+ if(!found?.geometry?.coordinates?.length)throw Error('Route drawing geometry is unavailable');
+ return {order:order.slice(),duration:found.duration,distance:found.distance,coords:found.geometry.coordinates,overlap:roadOverlap(found.geometry.coordinates)};
+}
+async function loadRouteAlternatives(){
+ if(!currentRoute||currentRoute.approx)return;
+ const token=currentRoute;const fastestOrder=optimize(lastMatrix.durations).order,byDistance=optimize(lastMatrix.distances).order;
+ const preferDistance=state.mode==='distance'&&!state.budgetEnabled;
+ const candidates=[{label:preferDistance?'Shortest modeled distance':'Fastest driving',order:preferDistance?byDistance:fastestOrder}];
+ const alternative=preferDistance?fastestOrder:byDistance;
+ if(alternative.join(',')!==candidates[0].order.join(','))candidates.push({label:preferDistance?'Fastest driving':'Distance-conscious',order:alternative});
+ const variants=[];
+ for(const c of candidates){
+  try{const route=await fetchRouteGeometry(c.order);variants.push({...c,...route});}
+  catch(error){console.warn('Route comparison unavailable:',error)}
+  if(currentRoute!==token)return;
+ }
+ if(!variants.length){renderRouteChoices();return;}
+ const fastest=variants.reduce((a,b)=>a.duration<=b.duration?a:b);
+ // A lower-backtracking candidate is labeled as such only if it is close to fastest in road time.
+ const less=variants.filter(v=>v.duration<=fastest.duration*1.15).sort((a,b)=>a.overlap.repeatedMeters-b.overlap.repeatedMeters||a.duration-b.duration)[0];
+ if(less&&less!==fastest&&less.overlap.repeatedMeters+20<fastest.overlap.repeatedMeters){less.label='Less repeated roadway';}
+ currentRoute.variants=variants;currentRoute.variantIndex=0;currentRoute.order=fastest.order.slice();renderRouteSummary();
 }
 function renderNavigation(){
  const fullOrder=[...currentRoute.order,currentPoints.length-1];
@@ -287,7 +339,7 @@ async function swapStops(i,j){
  await drawRoute();
 }
 function renderRouteSummary(){
- showResults(true);renderMetrics();renderNavigation();renderItinerary();updatePins();mapLabel(currentRoute.approx?'Approximate straight-line order only — NOT based on roads':'Ordered using mapped driving roads. Inspect pins before navigating.');
+ showResults(true);renderMetrics();renderRouteChoices();renderNavigation();renderItinerary();updateDrivePanel();updatePins();mapLabel(currentRoute.approx?'Approximate straight-line order only — NOT based on roads':'Ordered using mapped driving roads. Inspect pins before navigating.');
 }
 async function drawRoute(){
  if(!routeLayer||!currentRoute)return;
@@ -297,9 +349,8 @@ async function drawRoute(){
   L.polyline(arranged.map(x=>[x.lat,x.lon]),{color:'#f59e0b',weight:4,dashArray:'6 9',opacity:.7}).addTo(routeLayer);fitMap();return;
  }
  try{
-   const url=`https://router.project-osrm.org/route/v1/driving/${locationPath(arranged)}?overview=full&geometries=geojson&steps=false`;
-   const response=await fetch(url);if(!response.ok)throw Error('Could not draw street route');
-   const result=await response.json();const coords=result.routes?.[0]?.geometry?.coordinates;
+   const chosen=currentRoute.variants?.[currentRoute.variantIndex];
+   const coords=chosen?.order.join(',')===currentRoute.order.join(',')?chosen.coords:(await fetchRouteGeometry(currentRoute.order)).coords;
    if(!coords?.length)throw Error('Route geometry missing');
    L.polyline(coords.map(([lon,lat])=>[lat,lon]),{color:'#fbbf24',weight:5,opacity:.94,lineJoin:'round'}).addTo(routeLayer);
  } catch(error){
@@ -314,21 +365,30 @@ async function calculate(approx=false){
  const selected=getSelected();if(!selected.length){status('Choose at least one display.','error');return;}
  if(selected.length>68){status('Choose no more than 68 displays in one trip.','error');return;}
  state.start=$('start-input').value.trim();state.end=$('end-input').value.trim();
- state.mode=$('mode').value;save();invalidate();
+ state.mode=$('mode').value;state.budgetEnabled=$('budget-enabled').checked;state.budgetMinutes=Number($('budget-minutes').value);state.viewMinutes=Number($('view-minutes').value);save();invalidate();
  busy=true;$('optimize').disabled=true;$('estimate').classList.add('hidden');
  try{
    const points=await resolvePoints(selected); currentPoints=points;
    let matrixResult;
    if(approx){const m=straightMatrix(points);matrixResult={distances:m,durations:null};}
    else {status('Measuring real driving roads between all stops…','working');matrixResult=await roadMatrix(points);}
+   let budgetPlan=null;
+   if(state.budgetEnabled){
+     if(approx)throw Error('Time-budget planning needs real driving times; the rough fallback cannot estimate a trip budget.');
+     budgetPlan=selectWithinBudget(matrixResult.durations,selected,Number(state.budgetMinutes),Number(state.viewMinutes));
+     const indices=budgetPlan.indices;
+     currentPoints=[points[0],...indices.map(i=>points[i]),points.at(-1)];
+     matrixResult={durations:subsetMatrix(matrixResult.durations,indices),distances:subsetMatrix(matrixResult.distances,indices)};
+   }
    lastMatrix=matrixResult;
-   const values=approx?matrixResult.distances:state.mode==='distance'?matrixResult.distances:matrixResult.durations;
-   status(`Finding a better order for ${selected.length} stops…`,'working');
+   const values=approx?matrixResult.distances:state.budgetEnabled?matrixResult.durations:state.mode==='distance'?matrixResult.distances:matrixResult.durations;
+   status(`Finding a better order for ${currentPoints.length-2} stops…`,'working');
    await delay(10);
    const answer=optimize(values);
-   currentRoute={...answer,approx};
+   currentRoute={...answer,approx,budgetPlan,variants:[],variantIndex:0};
    renderRouteSummary();
    status(approx?'Approximate geographic ordering generated. This is NOT a road-aware route.':'Road-optimized itinerary generated. Verify approximate pins before driving.','good');
+   if(!approx){await loadRouteAlternatives();}
    await drawRoute();
  } catch(error){
    console.error(error);
@@ -345,6 +405,7 @@ function updateProjectSelect(){
 }
 function syncControls(){
  $('start-input').value=state.start;$('end-input').value=state.end;$('mode').value=state.mode;$('preset').value=state.preset;
+ $('budget-enabled').checked=!!state.budgetEnabled;$('budget-minutes').value=state.budgetMinutes??90;$('view-minutes').value=state.viewMinutes??4;
  updateProjectSelect();
 }
 function changeProject(id){
@@ -608,6 +669,99 @@ function submitDirectorySuggestion(event){
 function setEndpoint(key,value){
  state[key]=value;delete state.endpoints[key];save();invalidate();
 }
+function updateDrivePanel(){
+ const el=$('drive-current');if(!el)return;
+ $('drive-start').disabled=!currentRoute||!!currentRoute.approx||driveActive;
+ for(const id of ['drive-visited','drive-skip','drive-gps','drive-end'])$(id).disabled=!driveActive||busy;
+ if(!driveActive){el.textContent=currentRoute?'Ready to start. Live Drive Mode requires road routing.':'Optimize a road route first.';return;}
+ const next=currentPoints?.[currentRoute.order[0]];
+ el.textContent=next?`${driveRemainingIds.length} remaining · Next: ${next.name} — ${next.address}`:'All displays completed. Head toward your final destination.';
+ $('drive-visited').disabled=busy||!next;$('drive-skip').disabled=busy||!next;
+}
+function beginDrive(){
+ if(!currentRoute||currentRoute.approx||busy)return;
+ driveActive=true;driveAnchor={...currentPoints[0]};driveFinish={...currentPoints.at(-1)};
+ driveRemainingIds=currentRoute.order.map(i=>currentPoints[i].id);
+ updateDrivePanel();status('Drive started. Use Live Drive Mode while parked; map directions still run in Apple or Google Maps.','good');
+}
+function stopDrive(){driveActive=false;driveAnchor=null;driveRemainingIds=[];driveFinish=null;updateDrivePanel();status('Drive session ended. Saved visits and skipped statuses remain in this holiday project.','good');}
+async function liveAction(action){
+ if(!driveActive||busy||!currentRoute)return;
+ const target=currentPoints[currentRoute.order[0]];
+ if(!target)return;
+ const original=state.displays.find(d=>d.id===target.id);
+ if(!original)return;
+ if(action==='visit'){
+  original.visited=true;original.visitedAt=new Date().toISOString();original.skipped=false;
+  driveAnchor={...target};
+ }else{original.skipped=true;}
+ driveRemainingIds=driveRemainingIds.filter(id=>id!==target.id);save();renderStops();
+ await rerouteLive(false);
+}
+async function rerouteLive(useGps){
+ if(!driveActive||busy)return;
+ let anchor=driveAnchor;
+ if(useGps){
+  if(!navigator.geolocation){status('This browser does not offer location access.','error');return;}
+  status('Requesting location access for a one-time reroute…','working');
+  try{
+   const location=await new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(resolve,reject,{enableHighAccuracy:false,timeout:9000,maximumAge:30000}));
+   anchor={name:'Current location',address:`${location.coords.latitude.toFixed(5)},${location.coords.longitude.toFixed(5)}`,lat:location.coords.latitude,lon:location.coords.longitude,geoSource:'manual'};
+  }catch(error){status('Location was not available. Your existing route has not changed.','error');return;}
+ }
+ busy=true;updateDrivePanel();
+ try{
+   const items=driveRemainingIds.map(id=>state.displays.find(d=>d.id===id)).filter(d=>d&&!d.visited&&!d.skipped);
+   if(!items.length){driveRemainingIds=[];currentRoute.order=[];currentPoints=[anchor,driveFinish];lastMatrix=null;showResults(true);$('itinerary').textContent='Tour complete. Head to your saved finish.';$('nav-buttons').replaceChildren();routeLayer?.clearLayers();
+     for(const [name,fn] of [['Apple Maps',appleDirections],['Google Maps',googleDirections]]){const link=document.createElement('a');link.href=fn(waypointValue(anchor),[waypointValue(driveFinish)]);link.target='_blank';link.rel='noopener noreferrer';link.textContent=`Navigate to finish in ${name} ↗`;$('nav-buttons').append(link);}
+     updatePins();status('All selected displays completed or skipped. Navigate to your finish!','good');return;}
+   const newPoints=[anchor,...items,driveFinish];const matrix=await roadMatrix(newPoints);
+   const value=state.mode==='distance'?matrix.distances:matrix.durations;
+   const answer=optimize(value);
+   driveAnchor=anchor;lastMatrix=matrix;currentPoints=newPoints;currentRoute={...answer,approx:false,variants:[],variantIndex:0};
+   driveRemainingIds=answer.order.map(i=>newPoints[i].id);
+   await loadRouteAlternatives();renderRouteSummary();await drawRoute();
+   status(`Rerouted ${items.length} remaining display(s) from ${useGps?'your current position':'the last confirmed stop'}.`,'good');
+ }catch(error){console.warn(error);status('Could not reroute: '+error.message+' Previous visited/skip choices were saved; try again.','error');}
+ finally{busy=false;updateDrivePanel();}
+}
+async function copyText(value){
+ if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(value);return;}
+ const el=document.createElement('textarea');el.value=value;el.style.position='fixed';el.style.left='-9999px';document.body.append(el);el.select();const ok=document.execCommand('copy');el.remove();if(!ok)throw Error('Clipboard unavailable; save a text itinerary instead.');
+}
+function routeText(){
+ if(!currentRoute)return '';
+ const path=currentRoute.order.map(i=>currentPoints[i]);
+ return `${currentProject().name} — GlowRoute\nStart: ${currentPoints?.[0]?.address||state.start}\n${path.map((s,i)=>`${i+1}. ${s.name} — ${s.address}`).join('\n')}\nFinish: ${currentPoints?.at(-1)?.address||state.end}\n\nDriving estimates exclude live traffic. Check display hours and locations.\n`;
+}
+function createItineraryFile(){
+ const blob=new Blob([routeText()],{type:'text/plain;charset=utf-8'});
+ const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='GlowRoute-itinerary.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function shareUrl(){
+ if(!currentRoute?.order.length)throw Error('Optimize a route with at least one remaining display before sharing.');
+ const stops=currentRoute.order.map(i=>currentPoints[i]);
+ const includeEndpoints=$('share-endpoints').checked;
+ const payload=makeSharePayload(currentProject(),stops,{includeEndpoints,start:currentPoints?.[0]?.address||state.start,end:currentPoints?.at(-1)?.address||state.end});
+ const url=new URL(location.href);url.hash='tour='+encodeShare(payload);
+ if(url.href.length>7500)throw Error('This itinerary is too long for a reliable URL. Save a text itinerary instead.');
+ return url.href;
+}
+function inspectSharedLink(){
+ if(!location.hash.startsWith('#tour='))return;
+ try{sharedIncoming=decodeShare(location.hash.slice(6));}
+ catch(error){status('Invalid shared itinerary link: '+error.message,'error');return;}
+ $('shared-preview').classList.remove('hidden');$('shared-summary').textContent=`${sharedIncoming.name} · ${sharedIncoming.holiday} ${sharedIncoming.year} · ${sharedIncoming.stops.length} houses${sharedIncoming.start||sharedIncoming.end?' · Includes trip endpoints':''}`;
+ $('shared-stops').replaceChildren();sharedIncoming.stops.forEach((s,i)=>{const p=document.createElement('p');p.textContent=`${i+1}. ${s.name} — ${s.address}`;$('shared-stops').append(p)});
+}
+function dismissShare(){sharedIncoming=null;$('shared-preview').classList.add('hidden');history.replaceState(null,'',location.pathname+location.search);}
+function importSharedDrive(){
+ if(!sharedIncoming)return;
+ if(portfolio.projects.length>=40){status('You have reached the 40-project limit. Back up or remove an old drive first.','error');return;}
+ const copy=sharedIncoming;const displays=copy.stops.map((s,i)=>({id:createId(),name:s.name,address:s.address,lat:null,lon:null,featured:0,approved:false,sourceName:'Shared GlowRoute itinerary',needsSeasonCheck:true,rating:3}));
+ const next=makeProject({name:uniqueProjectName(copy.name,portfolio.projects),holiday:copy.holiday,year:copy.year,displays,selected:displays.map(d=>d.id),start:copy.start||DEFAULT_START,end:copy.end||DEFAULT_END,preset:'custom'});
+ save();portfolio.projects.push(next);activeProjectId=next.id;state=stateFromProject(next);dismissShare();syncControls();invalidate();renderStops();save();status(`Imported ${displays.length} shared houses into a NEW project. Check addresses before driving.`,'good');
+}
 function wire(){
  syncControls();
  $('start-input').addEventListener('change',e=>setEndpoint('start',e.target.value.trim()));
@@ -615,6 +769,16 @@ function wire(){
  $('mode').addEventListener('change',e=>{state.mode=e.target.value;save();invalidate();});
  $('preset').addEventListener('change',e=>preset(e.target.value));
  $('optimize').addEventListener('click',()=>calculate(false));$('estimate').addEventListener('click',()=>calculate(true));
+ for(const id of ['budget-enabled','budget-minutes','view-minutes'])$(id).addEventListener('change',()=>{state.budgetEnabled=$('budget-enabled').checked;state.budgetMinutes=Number($('budget-minutes').value);state.viewMinutes=Number($('view-minutes').value);save();invalidate();});
+ $('drive-start').addEventListener('click',beginDrive);
+ $('drive-visited').addEventListener('click',()=>liveAction('visit'));
+ $('drive-skip').addEventListener('click',()=>liveAction('skip'));
+ $('drive-gps').addEventListener('click',()=>rerouteLive(true));
+ $('drive-end').addEventListener('click',stopDrive);
+ $('share-link').addEventListener('click',async()=>{try{await copyText(shareUrl());$('share-status').textContent='Share link copied. People opening it can review addresses before adding a separate project.';}catch(e){$('share-status').textContent=e.message;}});
+ $('share-text').addEventListener('click',async()=>{try{await copyText(routeText());$('share-status').textContent='Text itinerary copied (includes both endpoints).';}catch(e){$('share-status').textContent=e.message;}});
+ $('share-file').addEventListener('click',createItineraryFile);
+ $('shared-import').addEventListener('click',importSharedDrive);$('shared-dismiss').addEventListener('click',dismissShare);
  $('reset').addEventListener('click',()=>{
   if(!confirm('Reset only the CURRENT project? Other seasons and years will be preserved.'))return;
   const p=currentProject();state={...seedState(),displays:p.holiday==='Halloween'&&p.year===2026?cloneSeed():[],selected:p.holiday==='Halloween'&&p.year===2026?seedSelections():new Set(),preset:p.holiday==='Halloween'&&p.year===2026?'top10':'custom',start:state.start,end:state.end};
@@ -656,7 +820,7 @@ function wire(){
  $('import-confirm').addEventListener('click',commitImport);
  $('import-cancel').addEventListener('click',closeImport);
  $('fit').addEventListener('click',fitMap);
- renderStops();initMap();
+ renderStops();initMap();inspectSharedLink();updateDrivePanel();
  if('serviceWorker' in navigator && location.protocol==='https:')navigator.serviceWorker.register('./sw.js',{scope:'./'}).catch(console.warn);
 }
 wire();

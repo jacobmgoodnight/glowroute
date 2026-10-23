@@ -125,3 +125,24 @@ python tests/directory_browser.py
 ### Still not implemented
 
 There is no approved automatic bulk API sync from FrightMaps, ChristmasPrism, or Indy with Kids. The existing source-link and browser/paste importer remain. The publicly maintained catalog is static until a maintainer merges a change, and suggestion issues are moderated manually. Real-time operating times, permissions, live traffic, user accounts, hosted private backups, and duplicate-road overlap penalties need a future iteration.
+
+
+## GlowRoute v1.4 — smart touring (GitHub Pages, no accounts)
+
+- **Route comparison and repeat-road measurement:** For each planned tour, the app compares the time-optimized stop order and a distance-conscious stop order, when distinct. It retrieves actual OSRM `/route` GeoJSON and estimates repeated road segments by matching undirected consecutive polyline pieces at 5-decimal-place coordinates. This is a heuristic measurement: mapping shapes, tiny offsets, parallel roads, and snapped intersections can create false positives or negatives. A "Less repeated roadway" label is used only for a candidate no more than 15% slower than the fastest measured candidate and showing at least 20 meters less repeated roadway. Neither candidate accounts for live traffic or road closures. **The routing search optimizes time or distance; repeated-road minimization is a comparison and trade-off, not an exhaustive constrained global optimization.**
+- **Live Drive Mode:** Launch after road optimization, mark the next house Visited or Skip & reroute, or request one-time device GPS permission for rerouting the unvisited stops. Without GPS, drive start is approximated by the most recently confirmed visited house. Continue to use Apple/Google Maps for actual directions and obey driving safety laws. Saved stop visit and skip choices remain in the current project; temporary GPS coordinates are not persisted. Refreshing the page stops the active session; optimized routes are regenerated when needed.
+- **Time budget:** Optional total minutes and viewing minutes per stop. Uses modeled driving-time matrix (no traffic), personal ratings and favorites, and a greedy orienteering heuristic. Must-see houses are mandatory or an explicit budget-too-short error appears. Under a budget, estimated drive time plus house viewing time must fit; not guaranteed globally optimal in display quality. Budgeted selection does not remove unchosen houses from saved projects. A straight-line fallback cannot support this calculation.
+- **Private favorites and 1–5 ratings:** Saved per project, independent of community data. Mark houses "Must see" to enforce them in budgeted trips. Historical duplicates retain preferences but clear skipped/visited flags.
+- **Share and export:** Share links contain ordered stop names and street addresses (no notes, ratings, history, geocodes or browser storage). Start/finish are **excluded by default** because they can reveal a home or other sensitive location; an explicit checkbox is required to include them. Shared URLs open a review screen and create a **new** local project instead of overwriting existing projects. Routes with excessively long URLs should use the downloadable text itinerary. A plain-text itinerary contains endpoints, so treat it as private if your finish is home.
+- **Storage migration:** `glowroute:projects:v2` is unchanged. Existing v1.3 projects, private notes, visit histories, pins, and source information are retained. New optional fields are backward-compatible. Browser storage remains local-only; use Backup all years to move projects between devices.
+
+### Testing
+
+```sh
+node --test tests/*.test.mjs
+python tests/directory_browser.py
+python tests/projects_browser.py
+python tests/tour_browser.py
+```
+
+The browser integration tests use offline stand-ins for map and road services. A successful GitHub Pages deployment does **not** establish that public OSRM, Census, or Nominatim are always available in real-world use.

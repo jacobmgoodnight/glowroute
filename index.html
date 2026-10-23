@@ -14,7 +14,7 @@
   <title>GlowRoute — Holiday display route planner</title>
 </head>
 <body>
-  <header class="topbar"><div class="brand"><span class="brand-icon">✳</span><div><b>GlowRoute</b><small>Make every festive mile count</small></div></div><span class="version">BETA · V1.3</span></header>
+  <header class="topbar"><div class="brand"><span class="brand-icon">✳</span><div><b>GlowRoute</b><small>Make every festive mile count</small></div></div><span class="version">BETA · V1.4</span></header>
   <main class="layout">
     <section class="panel controls" aria-label="Route planner">
       <div class="panel-heading"><div><p class="eyebrow">PLAN YOUR DRIVE</p><h1>A better route, less backtracking.</h1><p class="subtext">Optimize a holiday display tour using actual driving roads, then open it in your favorite navigation app.</p></div></div>
@@ -29,6 +29,7 @@
         </form></div>
         <div class="project-backup"><button id="projects-export" class="text-button" type="button">↓ Backup all years</button><label class="text-button file-label">↑ Restore backup<input id="projects-import" type="file" accept=".json,application/json"/></label></div>
       </section>
+      <section id="shared-preview" class="shared-preview hidden" aria-label="Review shared itinerary"><h2>Shared GlowRoute itinerary</h2><p id="shared-summary"></p><div id="shared-stops" class="shared-stops"></div><p class="hint">Review all public display addresses before creating a new local project. Existing projects remain unchanged. Shared endpoints may include a private location.</p><div class="bulk-actions"><button class="primary" type="button" id="shared-import">Save as new drive</button><button class="secondary" type="button" id="shared-dismiss">Dismiss</button></div></section>
       <section class="directory-panel" aria-label="Shared display directory">
         <div class="section-heading"><div><h2>Display directory</h2><p>Browse editor-maintained public address references. Review before adding or refreshing.</p></div><button id="directory-toggle" class="secondary" type="button">Browse</button></div>
         <div id="directory-panel" class="hidden directory-inner">
@@ -62,12 +63,20 @@
         <label class="field"><span>Optimize for</span><select id="mode"><option value="duration">Fastest driving time</option><option value="distance">Least driving distance*</option></select></label>
         <label class="field"><span>Highlights</span><select id="preset"><option value="top10">Featured 10</option><option value="top5">Featured 5</option><option value="all">All 25</option><option value="custom">My selection</option></select></label>
       </div>
+      <div class="smart-controls" aria-label="Optional time budget">
+        <label class="copy-check"><input type="checkbox" id="budget-enabled"/> Fit the best displays into a time budget</label>
+        <div class="field-grid compact" id="budget-settings"><label class="field">Total trip minutes<input type="number" id="budget-minutes" min="10" max="720" value="90"/></label><label class="field">Minutes at each house<input type="number" id="view-minutes" min="0" max="60" value="4"/></label></div>
+        <p class="hint">Includes the drive from start to finish and viewing time. Your ★ Must see houses are required. Display ratings are your private preferences, not community reviews.</p>
+      </div>
       <div class="action-row"><button class="primary" id="optimize">✧ Optimize my route</button><button class="secondary" id="reset">Reset</button></div>
       <button class="secondary hidden" id="estimate">Use rough straight-line ordering instead</button><p class="hint">* Distance measures the length of fastest-road legs, not every possible shortest path. Routing is not live-traffic aware.</p>
       <div role="status" aria-live="polite" id="status" class="status">Ready. Choose your displays and optimize.</div>
       <div class="results hidden" id="results">
         <div class="metrics" id="metrics"></div>
         <p class="route-detail" id="route-detail"></p>
+        <section class="route-comparison"><h3>Route quality and backtracking</h3><div id="route-choices" class="route-choices"><p class="hint">Road alternatives will appear after optimization.</p></div><p class="hint">Repeated-road measurements are estimates from mapped route geometry; traffic and road closures can change navigation.</p></section>
+        <section class="drive-panel" id="drive-panel"><div class="section-heading"><h3>Live Drive Mode</h3><button type="button" class="secondary" id="drive-start">Start drive</button></div><div id="drive-current" class="hint">Your next stop will appear here.</div><div class="bulk-actions"><button type="button" class="secondary" id="drive-visited" disabled>✓ Visited</button><button type="button" class="secondary" id="drive-skip" disabled>Skip & reroute</button><button type="button" class="secondary" id="drive-gps" disabled>Use my location & reroute</button><button type="button" class="secondary" id="drive-end" disabled>End drive</button></div><p class="hint">Use while parked. Position is optional and not saved; without GPS, rerouting starts at the last confirmed stop.</p></section>
+        <section class="sharing-panel"><h3>Share itinerary</h3><label class="copy-check"><input id="share-endpoints" type="checkbox"/> Include my start and finish in the link (may reveal a home address)</label><div class="bulk-actions"><button class="secondary" type="button" id="share-link">Copy share link</button><button class="secondary" type="button" id="share-text">Copy text itinerary</button><button class="secondary" type="button" id="share-file">Save itinerary file</button></div><p class="hint" id="share-status">Sharing includes house names and public addresses, never private notes, ratings or visited history.</p></section>
         <div class="export-head"><h2>Navigate this trip</h2><span id="segment-summary"></span></div>
         <div id="nav-buttons" class="nav-buttons"></div><div id="itinerary" class="itinerary"></div>
         <p class="hint" id="nav-hint">Map apps may change your exact driving roads for traffic or closures. The stop order will be preserved.</p>
