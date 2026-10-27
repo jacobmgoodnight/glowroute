@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/icon.svg" width="112" alt="GlowRoute app icon: two route points connected by a glowing road with a star" /></p>
+
 # 🎃🎄 GlowRoute
 
 **Make every festive mile count.**
