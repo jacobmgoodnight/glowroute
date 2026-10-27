@@ -22,7 +22,7 @@
     <text x="24" y="37" font-size="12" font-weight="700" letter-spacing="2" fill="#62ddaf">PLAN YOUR DRIVE</text>
     <text x="24" y="81" font-size="28" font-weight="700" fill="#f6f8fc">More lights.</text>
     <text x="24" y="114" font-size="28" font-weight="700" fill="#f6f8fc">Less backtracking.</text>
-    <text x="24" y="142" font-size="14" fill="#9eb1c6">A sample holiday route with six display stops</text>
+    <text x="24" y="142" font-size="14" fill="#9eb1c6">A sample tour of your favorite holiday displays</text>
     <text x="24" y="181" font-size="13" font-weight="700" fill="#cbd7e6">HOLIDAY DRIVE</text>
     <rect x="24" y="194" width="330" height="48" rx="10" fill="#26374b" stroke="#51677c"/>
     <text x="40" y="224" font-size="17" font-weight="600" fill="#f4f7fc">Halloween neighborhood tour</text>
