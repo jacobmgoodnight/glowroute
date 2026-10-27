@@ -8,6 +8,10 @@ GlowRoute is a **free, open-source holiday display route planner** that helps yo
 
 Built for phones and desktops. No account required.
 
+![Illustration of GlowRoute planning a holiday display driving route](assets/readme-route-preview.svg)
+
+*Illustrated feature overview — not a screenshot of the live application.*
+
 **[🚗 Open GlowRoute](https://jacobmgoodnight.github.io/glowroute/)** · [View source](https://github.com/jacobmgoodnight/glowroute) · [Report an issue or suggest a display](https://github.com/jacobmgoodnight/glowroute/issues)
 
 > **Beta:** GlowRoute is an independently maintained route-planning tool, not a live directory of verified operating displays. Check listing dates, locations, hours and navigation before heading out.
