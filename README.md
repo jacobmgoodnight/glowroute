@@ -20,6 +20,8 @@ Built for phones and desktops. No account required.
 
 **New in v1.5:** nationwide routing, dependable time/distance selection, cancellable and cached routing requests, a simpler first visit, focused mobile driving with resume, safer backups/sharing and reliable PWA updates. Read the [changelog](CHANGELOG.md), [audit and validation report](docs/AUDIT-v1.5.md), or [prioritized v1.6 roadmap](ROADMAP.md).
 
+**v1.6 release candidate:** clearer seasonal/source context, directory sorting and filtered bulk selection, import diagnostics and stable review edits, plus personal preferences preserved in stop-list JSON round-trips. See the [v1.6 scope and validation](docs/RELEASE-v1.6.md). The screenshots above were captured during v1.5.
+
 ## ✨ What can GlowRoute do?
 
 | Feature | What it helps you do |
@@ -49,7 +51,9 @@ GlowRoute works for **your own neighborhood or any area where you have display a
 
 Open **Bulk import / paste list** and paste addresses from a public holiday guide or your notes. You can also use a CSV/TSV/TXT file or a GlowRoute JSON export. Review names, addresses and duplicates before adding them; addresses aren't checked as operating displays automatically.
 
-For abbreviated street-only lists, enter the optional city/state. Complete addresses keep their supplied locality. Use **Backup all years** to preserve all projects, ratings, favorites and private preferences; a stop-list import is an address review workflow rather than a full project restore.
+For abbreviated street-only lists, enter the optional city/state. Complete addresses keep their supplied locality. Review ignored-record explanations, use **Select all eligible** or **Deselect all**, and switch between Add/Replace without losing edited rows. Append mode skips existing addresses and preserves their private data. Large lists can be reduced to a subset within the 70-display project limit; preview up to 500 unique addresses at once.
+
+GlowRoute JSON stop exports preserve ratings, favorites, must-see flags, private notes, saved selection, visit state, source details and approved manual pins through import review. Same-holiday/year exports retain seasonal verification; importing into another holiday/year resets verification and visit/skip state. Old exports remain supported but need a seasonal recheck when they lack holiday/year context. These files can contain private data. Use **Backup all years** to restore complete projects, endpoints and settings.
 
 **Import from a website** supports selected attributed source snapshots and direct browser-readable pages. It cannot automatically extract arbitrary websites, bypass their access restrictions, or live-sync third-party directories.
 
@@ -59,7 +63,10 @@ The initial app includes **25 Irvington, Indianapolis-area Halloween addresses**
 
 - **A listed address isn't a promise that the display is operating.** Check the listed season and original source before visiting.
 - Directory updates are reviewed rather than automatically scraped or synced.
+- **Source reviewed** dates describe editorial source review, not a visit or proof that the display operates. Past years are labeled **Archive**; current-year listings still require an operating check. Source notes and any sourced dates/hours are available under **Source notes & details**.
+- Search and sort listings by city/area, season, name or source review date. **Select shown** affects the current filters; selections outside those filters remain counted until you clear them.
 - You can suggest a publicly advertised display or correction using a **public GitHub issue**. Only share residential addresses that are already public or that you have permission to publish.
+- For a removal request, use the catalog ID shown under a listing's source details. The app omits address/source URL fields from removal drafts; do not add private details in the notes.
 - Duplicating a project into the next year marks its listings for seasonal verification.
 
 The public directory lives in [`directory/catalog.json`](directory/catalog.json). FrightMaps and other external holiday directories may be linked for discovery but are **not** integrated as automatic data feeds.
