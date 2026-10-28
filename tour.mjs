@@ -1,4 +1,15 @@
 import {optimize,routeCost} from './optimizer.mjs';
+import {canonicalAddress} from './importer.mjs';
+
+/** Keep the requested objective first; geometry comparisons must not change it. */
+export function routeCandidates(matrix, mode='duration', budget=null) {
+ const fastest=optimize(matrix.durations), shortest=optimize(matrix.distances);
+ const candidates=[{...fastest,label:'Fastest modeled driving time'},{...shortest,label:'Shortest modeled driving distance'}];
+ if(mode==='distance'&&!budget)candidates.reverse();
+ return candidates.filter((candidate,index,all)=>
+  all.findIndex(other=>other.order.join(',')===candidate.order.join(','))===index &&
+  (!budget || routeCost(candidate.order,matrix.durations)+budget.viewingSeconds<=budget.limitSeconds+1e-6));
+}
 
 /** Return a smaller, fixed-endpoint matrix for the selected original node indices. */
 export function subsetMatrix(matrix, indices) {
@@ -34,7 +45,9 @@ export function selectWithinBudget(durations, displays, budgetMinutes, viewingMi
   };
   for(const node of mandatory){const {index,cost}=incremental(node,order);if(!Number.isFinite(cost))throw Error('A must-see location has no driveable connection.');order.splice(index,0,node);}
   const totalSeconds=seq=>routeCost(seq,durations)+seq.length*viewingMinutes*60;
-  if(totalSeconds(order)>budgetMinutes*60+1e-6)throw Error(`Your ${mandatory.length} must-see displays need at least ${Math.ceil(totalSeconds(order)/60)} minutes, exceeding this budget. Increase time or remove a must-see.`);
+ // Try the actual fixed-endpoint solver before deciding mandatory stops cannot fit.
+ if(order.length){const improved=optimize(subsetMatrix(durations,order));order=improved.order.map(i=>order[i-1]);}
+ if(totalSeconds(order)>budgetMinutes*60+1e-6)throw Error(`The modeled trip${mandatory.length?' with your '+mandatory.length+' must-see displays':''} needs ${Math.ceil(totalSeconds(order)/60)} minutes with the current ordering, exceeding this budget. Increase time or remove a must-see.`);
   const remaining=new Set(Array.from({length:n},(_,i)=>i+1).filter(i=>!mandatory.includes(i)));
   while(remaining.size){
     let winner=null;
@@ -54,7 +67,7 @@ export function selectWithinBudget(durations, displays, budgetMinutes, viewingMi
   const improved=optimize(remapped);
   const arranged=improved.order.map(i=>order[i-1]);
   const drivingSeconds=routeCost(arranged,durations), viewingSeconds=arranged.length*viewingMinutes*60;
-  return {indices:arranged,drivingSeconds,viewingSeconds,totalSeconds:drivingSeconds+viewingSeconds,excluded:n-arranged.length,mandatory:mandatory.length};
+ return {indices:arranged,drivingSeconds,viewingSeconds,totalSeconds:drivingSeconds+viewingSeconds,limitSeconds:budgetMinutes*60,excluded:n-arranged.length,mandatory:mandatory.length};
 }
 
 const earth=6371000;
@@ -96,7 +109,8 @@ export function decodeShare(value){
  const decoded=atob(value.replace(/-/g,'+').replace(/_/g,'/'));
  const bytes=Uint8Array.from(decoded,c=>c.charCodeAt(0));
  const data=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));
- if(data.v!==1||!Array.isArray(data.stops)||data.stops.length<1||data.stops.length>MAX_SHARE_STOPS||data.stops.some(d=>typeof d.name!=='string'||typeof d.address!=='string'||d.address.length>190||d.name.length>90))throw Error('Shared itinerary has invalid stops.');
+ if(!data||data.v!==1||!Array.isArray(data.stops)||data.stops.length<1||data.stops.length>MAX_SHARE_STOPS||data.stops.some(d=>!d||typeof d.name!=='string'||!d.name.trim()||typeof d.address!=='string'||!d.address.trim()||d.address.length>190||d.name.length>90))throw Error('Shared itinerary has invalid stops.');
+ if(new Set(data.stops.map(d=>canonicalAddress(d.address))).size!==data.stops.length)throw Error('Shared itinerary contains duplicate addresses.');
  if(typeof data.name!=='string'||data.name.length>90||!['Halloween','Christmas','Other'].includes(data.holiday)||!Number.isInteger(data.year)||data.year<2000||data.year>2100)throw Error('Shared itinerary metadata is invalid.');
  if((data.start!==undefined&&(typeof data.start!=='string'||data.start.length>250))||(data.end!==undefined&&(typeof data.end!=='string'||data.end.length>250)))throw Error('Shared itinerary endpoints are invalid.');
  return data;
