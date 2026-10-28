@@ -1,0 +1,28 @@
+name: Bug report
+description: Report a reproducible routing, import, storage or interface problem.
+body:
+  - type: markdown
+    attributes:
+      value: "Issues are public. Remove home endpoints, private notes, GPS coordinates and personal data from screenshots/backups. Use public landmarks to reproduce routing problems."
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the selected optimization mode or import format when relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser, device and app version
+  - type: textarea
+    id: example
+    attributes:
+      label: Safe example or error message
+      description: Use only publicly advertised addresses or civic landmarks. Never attach an unredacted project backup.
