@@ -1,6 +1,12 @@
 # Changelog
 
-## 1.6.0 — Discovery and reviewed imports (release candidate)
+## 1.6.1 — Adjustable desktop planner
+
+- Drag the divider between the planner and map to choose their widths. Keyboard controls support arrow keys, larger Shift steps, Home/End limits, Enter to reset and Escape to cancel a drag; double-click also resets.
+- Remember the preferred width separately from saved drives. Keep usable minimum pane sizes, restore the preference after resizing the window and preserve the stacked mobile layout. Resize Leaflet with the map area.
+- Add deterministic pane-sizing and real-browser interaction regressions, including unavailable storage and unchanged project data. Include the new lightweight module in the updated offline shell.
+
+## 1.6.0 — Discovery and reviewed imports
 
 - Clearly label archived, current-year unconfirmed and future-season directory references. Show source review dates independently of operating verification and expose attributed public notes. Optional locality, description, dates and hours are supported only when an editor supplies them with a source; existing listings receive no invented information.
 - Add directory sorting, Select/Deselect shown, global selection clearing and counts for selections outside the current filters. Keep checkbox focus and indicate records already in the active drive.

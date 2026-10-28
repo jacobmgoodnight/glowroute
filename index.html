@@ -15,9 +15,9 @@
 </head>
 <body>
   <a class="skip-link" href="#planner-heading">Skip to route planner</a>
-  <header class="topbar"><div class="brand"><span class="brand-icon">✳</span><div><b>GlowRoute</b><small>Make every festive mile count</small></div></div><span class="version">V1.6</span></header>
+  <header class="topbar"><div class="brand"><span class="brand-icon">✳</span><div><b>GlowRoute</b><small>Make every festive mile count</small></div></div><span class="version">V1.6.1</span></header>
   <main class="layout">
-    <section class="panel controls" aria-label="Route planner">
+    <section class="panel controls" id="planner-panel" aria-label="Route planner">
       <div class="panel-heading"><div><p class="eyebrow">PLAN YOUR DRIVE</p><h1 id="planner-heading" tabindex="-1">A better route, less backtracking.</h1><p class="subtext">Add displays, set your start and finish, then optimize. Open the drive in Apple Maps or Google Maps when you're ready.</p></div></div>
       <section id="welcome" class="welcome hidden" aria-label="Get started"><h2>Where shall we go?</h2><p>Try an Indianapolis sample, or bring display addresses from your own town. Everything stays on this device.</p><div class="bulk-actions"><button type="button" id="welcome-sample" class="secondary">Explore a sample drive</button><button type="button" id="welcome-own" class="primary">Plan my own drive</button></div></section>
       <p id="storage-status" role="alert" class="storage-status"></p>
@@ -117,12 +117,14 @@
         <div class="bulk-actions"><button id="import-confirm" type="button" class="primary" disabled>Add reviewed displays</button><button id="import-cancel" type="button" class="secondary">Close</button></div>
       </section>
     </section>
+    <div id="panel-resizer" class="panel-resizer" role="separator" tabindex="0" aria-orientation="vertical" aria-label="Resize route planner and map" aria-controls="planner-panel" aria-describedby="panel-resizer-help" aria-valuemin="0" aria-valuemax="100" aria-valuenow="36" title="Drag to resize. Double-click to reset."><span aria-hidden="true"></span></div>
     <section class="map-area" aria-label="Tour map">
       <div id="map" role="application" aria-label="Map of holiday house displays"></div>
       <div class="map-banner"><span class="map-banner-dot"></span> <span id="map-label">Stops will appear once their addresses are found.</span></div>
       <div class="map-tools"><button class="map-tool" id="fit" title="Fit markers" aria-label="Fit markers">⌗</button></div>
     </section>
   </main>
+  <p id="panel-resizer-help" class="visually-hidden">Drag to resize the route planner and map. Left and Right arrows adjust the width; hold Shift for larger steps. Home and End set the limits. Enter or double-click resets the width. Escape cancels a drag.</p>
   <footer><span>Built for spooky nights and bright lights.</span><span>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> · Routing: <a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noopener">OSRM public demo</a> · <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noopener">Fix the map</a></span></footer>
   <dialog id="pin-dialog"><form method="dialog"><h3>Set a map pin</h3><p id="pin-info"></p><p class="subtext">Tap the correct house location on the map, then press Done. This is useful when an address cannot be located accurately.</p><div class="action-row"><button value="cancel" class="secondary">Cancel</button><button value="done" class="primary">Done</button></div></form></dialog>
 </body>

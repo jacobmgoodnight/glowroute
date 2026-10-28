@@ -1,5 +1,5 @@
-const CACHE='glowroute-shell-v1-6-0';
-const CORE=['./','./index.html','./styles.css','./app.js','./data.js','./optimizer.mjs','./importer.mjs','./projects.mjs','./catalogs.mjs','./directory.mjs','./tour.mjs','./routing.mjs','./directory/catalog.json','./manifest.webmanifest','./assets/icon.svg','./assets/icon-192.png','./assets/icon-512.png'];
+const CACHE='glowroute-shell-v1-6-1';
+const CORE=['./','./index.html','./styles.css','./app.js','./data.js','./optimizer.mjs','./importer.mjs','./projects.mjs','./catalogs.mjs','./directory.mjs','./tour.mjs','./routing.mjs','./layout.mjs','./directory/catalog.json','./manifest.webmanifest','./assets/icon.svg','./assets/icon-192.png','./assets/icon-512.png'];
 const coreUrls=new Set(CORE.map(path=>new URL(path,self.registration.scope).href));
 // One release-consistent shell. Activate only when all required assets are available.
 self.addEventListener('install',event=>{

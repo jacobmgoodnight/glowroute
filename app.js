@@ -6,6 +6,7 @@ import {DIRECTORIES,findCatalog,htmlToText} from './catalogs.mjs';
 import {validateDirectory,compareCatalogToProject,applyCatalogToProject,makeSubmissionUrl,catalogFits,directorySeason,directoryMatches} from './directory.mjs';
 import {subsetMatrix,selectWithinBudget,roadOverlap,makeSharePayload,encodeShare,decodeShare,routeCandidates} from './tour.mjs';
 import {validCoordinates,coordinateInput,locationPath,fetchJson,validateRoadMatrix,createRoutingClient} from './routing.mjs';
+import {initPanelResize} from './layout.mjs';
 
 const $=id=>document.getElementById(id);
 const defaultTop5=['ouija','lady','mcblackton','studio','circus'];
@@ -871,6 +872,7 @@ function importSharedDrive(){
  save();portfolio.projects.push(next);activeProjectId=next.id;state=stateFromProject(next);dismissShare();syncControls();invalidate();renderStops();save();status(`Imported ${displays.length} shared houses into a NEW project. Check addresses before driving.`,'good');
 }
 function wire(){
+ initPanelResize({layout:document.querySelector('.layout'),handle:$('panel-resizer'),mapArea:document.querySelector('.map-area'),onMapResize:()=>map?.invalidateSize({pan:false,debounceMoveend:true})});
  syncControls();
  if(!rawPortfolio&&!legacy&&!storageReadError&&!location.hash.startsWith('#tour='))$('welcome').classList.remove('hidden');
  if(storageReadError)$('storage-status').textContent='Saved data could not be read. Original browser data has not been overwritten. Export any work in this session before recovery.';

@@ -1,6 +1,6 @@
 # v1.6 — Discovery and reviewed imports
 
-Status: release candidate on `release/v1.6-discovery`, based on the merged v1.5 release (`e10fb97`). v1.5 is live on GitHub Pages; this candidate is not deployed until its own PR is merged.
+Status: v1.6 merged in [PR #3](https://github.com/jacobmgoodnight/glowroute/pull/3) (`a74c92d`). Both release-head Actions runs passed all 68 Node tests and 23 browser scenario groups in Ubuntu Chromium. The v1.6.1 patch adds desktop pane resizing; deployment status is available in GitHub Actions.
 
 ## Completed scope
 
@@ -29,6 +29,14 @@ Changes are concentrated in `importer.mjs`, `directory.mjs`, their existing `app
 
 Hosted Actions results are attached to the release PR. No physical mobile device, Safari/screen-reader or native Maps testing was performed in this pass. Public mapping-service reliability and aggregate quotas remain the limitations documented in the v1.5 audit; no routing provider change is implied.
 
-## Deferred
+## v1.6.1 follow-up
+
+The desktop planner/map divider supports pointer dragging, keyboard adjustments, reset and drag cancellation. It remembers a separate browser layout preference, bounds pane widths and redraws Leaflet when its container changes. Saved drive data and mobile stacking remain unchanged; storage failures do not block resizing. The new `layout.mjs` is part of the versioned offline shell.
+
+Patch validation: 71 Node tests and 26 browser scenario groups, including drag/keyboard controls, reload persistence, desktop/mobile viewport changes, map resize callbacks, cancellation/reset, unavailable storage and unchanged saved projects. Physical-device limitations above still apply.
+
+A separate Windows Edge 156 smoke check used real Leaflet, OSM tiles and OSRM routing with public Denver civic landmarks. Widening the planner from 490 to 690 pixels redrew the 726-pixel map correctly; 20 map tiles loaded and no page errors were reported. Landmarks are illustrative, not holiday listings.
+
+## Deferred work
 
 Additional regional feeds require source-specific rights and freshness review. Photos require a sustainable licensing/privacy/bandwidth policy. Physical-device accessibility/navigation checks need the relevant devices. More elaborate overlap/budget algorithms, a hosted moderation system and wider refactoring remain outside this discovery release. See [ROADMAP.md](../ROADMAP.md).
