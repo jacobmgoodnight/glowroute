@@ -54,6 +54,11 @@ export function applyCatalogToProject(project,actions,{maxStops=70}={}){
  }
  return {displays:next,selected:[...selected],added,updated};
 }
+
+/** Count resulting records, rather than treating matched updates as additions. */
+export function catalogFits(project, actions, maxStops=70){
+ try {applyCatalogToProject(project,actions,{maxStops});return true;}catch{return false;}
+}
 export function makeSubmissionUrl(details){
  const type=details.type==='correction'?'Correction':'Display suggestion';
  const holiday=holidays.has(details.holiday)?details.holiday:'Halloween';

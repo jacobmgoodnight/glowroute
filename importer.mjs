@@ -1,19 +1,13 @@
 /** Client-side imports only: no scraping or third-party requests. */
 const STREET = /\b\d{1,6}\s+(?:(?:N|S|E|W|NE|NW|SE|SW)\.?\s+)?(?:[A-Za-z0-9'’.\-]+\s+){0,7}(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Court|Ct|Way|Circle|Cir|Parkway|Pkwy|Terrace|Ter|Place|Pl)\.?\b/i;
-const CLEAN_CITY = /,?\s*(?:Indianapolis|Irvington|Greenfield|New Palestine|Carmel|Fishers|Lawrence|Beech Grove|Avon|Brownsburg|Plainfield|Greenwood)(?:\s*,\s*|\s+)(?:IN|Indiana)(?:\s+\d{5}(?:-\d{4})?)?$/i;
-const STATE_END = /\b(?:IN|Indiana|IL|OH|KY|MI|WI|MO|CA|NY|FL|TX)\s+\d{5}(?:-\d{4})?$/i;
 const STREET_END = /(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Court|Ct|Way|Circle|Cir|Parkway|Pkwy|Terrace|Ter|Place|Pl)\.?$/i;
 const headerTags=['address','street','location','name','display','city','state','zip','postal'];
 export function canonicalAddress(address){return String(address||'').toLowerCase().replace(/\b(north|n)\b/g,'n').replace(/\b(south|s)\b/g,'s').replace(/\b(east|e)\b/g,'e').replace(/\b(west|w)\b/g,'w').replace(/\b(street|st)\b/g,'st').replace(/\b(avenue|ave)\b/g,'ave').replace(/\b(road|rd)\b/g,'rd').replace(/\b(lane|ln)\b/g,'ln').replace(/\b(drive|dr)\b/g,'dr').replace(/\b(boulevard|blvd)\b/g,'blvd').replace(/[.,#]/g,'').replace(/\s+/g,' ').trim();}
 function clean(value){return String(value??'').replace(/[\u200b\u200c\u200d]/g,'').trim().replace(/^["'`\s•*–—-]+|["'`\s;|–—-]+$/g,'').trim();}
 function normalizeAddress(value,defaultCity){
  let address=clean(value).replace(/\s+/g,' ').replace(/\s+\(.*?\)$/,'').trim();
- // Use an explicit city/state or zip if supplied; otherwise apply the selected import area.
- if(!STATE_END.test(address)&& !/\b[A-Z]{2}\s*\d{5}\b/.test(address)){
-  if(CLEAN_CITY.test(address))return address;
-  if(/,\s*[^,]+,\s*[A-Za-z]{2}\b/.test(address))return address;
-  address+=', '+clean(defaultCity||'Indianapolis, IN');
- }
+ // Only append an explicitly selected area to a bare street. Preserve all cities/countries.
+ if(STREET_END.test(address)&&clean(defaultCity))address+=', '+clean(defaultCity);
  return address.slice(0,170);
 }
 function parseDelimited(text,delimiter){
@@ -33,7 +27,8 @@ function toRecord(name,address,defaultCity,lat=null,lon=null){
  if(!STREET.test(address))return null;
  const normalized=normalizeAddress(address,defaultCity);
  const label=clean(name).slice(0,80)||clean(address).slice(0,80);
- return {name:label,address:normalized,lat:Number.isFinite(lat)&&lat>-90&&lat<90?lat:null,lon:Number.isFinite(lon)&&lon>-180&&lon<180?lon:null};
+ const valid=Number.isFinite(lat)&&Math.abs(lat)<=90&&Number.isFinite(lon)&&Math.abs(lon)<=180;
+ return {name:label,address:normalized,lat:valid?lat:null,lon:valid?lon:null};
 }
 function rowRecords(rows,defaultCity){
  if(!rows.length)return [];
@@ -48,7 +43,7 @@ function rowRecords(rows,defaultCity){
   const values=row.map(clean);if(!values.some(Boolean))continue;
   let name='',address='';
   if(hasHeader){address=values[ai]||'';name=values[ni]||'';
-   if(address&&ci>=0&&values[ci]&&!new RegExp(values[ci],'i').test(address))address+=', '+values[ci];
+   if(address&&ci>=0&&values[ci]&&!address.toLowerCase().includes(values[ci].toLowerCase()))address+=', '+values[ci];
    if(address&&si>=0&&values[si]&&!/\b[A-Z]{2}\b\s*\d{5}?$/i.test(address))address+=', '+values[si];
    if(address&&zi>=0&&values[zi]&&!/\d{5}/.test(address))address+=' '+values[zi];
   }else{
@@ -89,8 +84,8 @@ export function parseImportedStops(raw,{defaultCity='Indianapolis, IN 46219',fil
  }else{
   const first=text.split(/\r?\n/)[0];
   const delimiter=filename.toLowerCase().endsWith('.tsv')||first.includes('\t')?'\t':',';
-  const header=first.toLowerCase();
-  const looksTabular=/\b(address|street|location|name|display)\b/.test(header)&&first.includes(delimiter);
+  const headings=parseDelimited(first,delimiter)[0].map(normalizedHeading);
+  const looksTabular=headings.some(h=>['address','streetaddress','street','location','formattedaddress','fulladdress'].includes(h))&&first.includes(delimiter);
   if(looksTabular||filename.toLowerCase().endsWith('.csv')||filename.toLowerCase().endsWith('.tsv')){
    records=rowRecords(parseDelimited(text,delimiter),defaultCity);
    if(!records.length&&!filename.toLowerCase().endsWith('.csv'))records=textRecords(text,defaultCity);

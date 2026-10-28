@@ -8,13 +8,17 @@ GlowRoute is a **free, open-source holiday display route planner** that helps yo
 
 Built for phones and desktops. No account required.
 
-![Illustration of GlowRoute planning a holiday display driving route](assets/readme-route-preview.svg)
+![GlowRoute v1.5 desktop route summary and map](docs/screenshots/desktop-route.png)
 
-*Illustrated feature overview — not a screenshot of the live application.*
+*Genuine browser capture with real OSM mapping and OSRM routing. Public Denver landmarks illustrate the workflow; they are not advertised holiday display listings.*
+
+<p align="center"><img src="docs/screenshots/mobile-drive.png" width="300" alt="GlowRoute mobile Live Drive view showing the next public landmark, progress, Maps navigation, visited and skip actions" /></p>
 
 **[🚗 Open GlowRoute](https://jacobmgoodnight.github.io/glowroute/)** · [View source](https://github.com/jacobmgoodnight/glowroute) · [Report an issue or suggest a display](https://github.com/jacobmgoodnight/glowroute/issues)
 
 > **Beta:** GlowRoute is an independently maintained route-planning tool, not a live directory of verified operating displays. Check listing dates, locations, hours and navigation before heading out.
+
+**New in v1.5:** nationwide routing, dependable time/distance selection, cancellable and cached routing requests, a simpler first visit, focused mobile driving with resume, safer backups/sharing and reliable PWA updates. Read the [changelog](CHANGELOG.md), [audit and validation report](docs/AUDIT-v1.5.md), or [prioritized v1.6 roadmap](ROADMAP.md).
 
 ## ✨ What can GlowRoute do?
 
@@ -34,16 +38,18 @@ GlowRoute works for **your own neighborhood or any area where you have display a
 ## 🚀 Start planning in a few steps
 
 1. **Open [GlowRoute](https://jacobmgoodnight.github.io/glowroute/)** on your phone or computer.
-2. **Choose a saved drive or select _+ New drive_.** Start with the built-in Irvington Halloween example, browse the **Display directory**, or add your own locations.
-3. **Set Start and Finish.** Choose the displays you want to visit. Optionally set a time budget and mark important stops **Must see**.
+2. **Choose _Explore a sample drive_ or _Plan my own drive_.** Existing users go straight to their saved projects. New custom drives start with blank endpoints; add full addresses from any city or browse the **Display directory**.
+3. **Set Start and Finish.** Optionally use **Use my location** for this tab only; your entered starting address is retained. Choose displays, mark important stops **Must see**, and open the optional time budget if needed.
 4. Select **Optimize my route**. Check the route, map pins and suggested order before you go.
-5. Open a navigation leg in **Apple Maps or Google Maps**. Use **Live Drive Mode** while parked to track visited stops or reroute around a skip.
+5. Open a navigation leg in **Apple Maps or Google Maps**, or start **Live Drive Mode** for a focused next-stop view. A passenger or parked driver can mark visits, skip/reroute, retry without GPS and return to the full itinerary. After a reload, **Resume interrupted drive** uses saved remaining stops and your last confirmed display or saved starting address.
 
 **Tip:** You can review imported addresses and edit a map pin before routing. Some residential addresses are geocoded only approximately.
 
 ### Bring a list of your own displays
 
 Open **Bulk import / paste list** and paste addresses from a public holiday guide or your notes. You can also use a CSV/TSV/TXT file or a GlowRoute JSON export. Review names, addresses and duplicates before adding them; addresses aren't checked as operating displays automatically.
+
+For abbreviated street-only lists, enter the optional city/state. Complete addresses keep their supplied locality. Use **Backup all years** to preserve all projects, ratings, favorites and private preferences; a stop-list import is an address review workflow rather than a full project restore.
 
 **Import from a website** supports selected attributed source snapshots and direct browser-readable pages. It cannot automatically extract arbitrary websites, bypass their access restrictions, or live-sync third-party directories.
 
@@ -64,8 +70,8 @@ GlowRoute runs as a static web app—**no accounts, hosted personal profiles or 
 
 - Your projects, selected stops, ratings, notes and visited history live **in your browser's local storage**, not in a personal cloud account.
 - **Back up all years** to a local JSON file and **Restore backup** to move your projects between browsers or devices. Projects don't automatically sync.
-- Shared itinerary links include stop names and addresses. **Start and Finish are omitted by default**; add them only if you're comfortable sharing those locations.
-- Live Drive Mode may request location permission to reroute. The temporary GPS position isn't saved in your projects.
+- Shared itinerary links, copied text and itinerary files include stop names and addresses. **Start and Finish are omitted by default in all three**; add them only if you're comfortable sharing those locations. Stop/project backup exports can include private data—keep those files private.
+- Starting-point GPS and Live Drive rerouting request permission only after your action. Temporary GPS positions aren't saved in projects. Resume stores stop IDs and the last confirmed display, not a location trail.
 - Map, address lookup and road-routing requests go to third-party mapping services. Entered addresses or coordinates are transmitted to those services as needed.
 - A proposed display submitted as a GitHub issue is **public**, so do not include private contact details or unapproved home addresses.
 
@@ -77,6 +83,8 @@ GlowRoute runs as a static web app—**no accounts, hosted personal profiles or 
 
 GlowRoute is a progressive web app (PWA). The interface may be cached, but **maps, geocoding, route optimization and navigation still require internet access**. It is not an offline navigation app.
 
+After an application update, use **Save & reload** when prompted. The release shell updates without clearing projects, favorites or geocodes. If storage fails, export a backup before reloading. An offline directory copy is labeled as cached; historical listings are never real-time operating information.
+
 ## 🛠️ Running the project locally
 
 GlowRoute is built with vanilla **HTML, CSS and JavaScript**, Leaflet and OpenStreetMap mapping, and browser local storage. It is designed to run directly on **GitHub Pages**, without a hosted database.
@@ -87,16 +95,16 @@ Serve the repository over HTTP (rather than double-clicking `index.html`; the ap
 python3 -m http.server 8080
 ```
 
-Open [http://localhost:8080](http://localhost:8080). For the automated tests, use Node.js 18+ and Python:
+Open [http://localhost:8080](http://localhost:8080). No build or package installation is required to run the app. For the automated tests, use Node.js 22+:
 
 ```sh
-node --test tests/*.test.mjs
-python tests/projects_browser.py
-python tests/directory_browser.py
-python tests/tour_browser.py
+npm ci
+npm test
+npx playwright install chromium
+npm run test:browser
 ```
 
-Browser tests use local stand-ins for external routing and map services; they cannot verify live third-party uptime.
+Browser tests load the actual app modules with deterministic external-service fixtures at desktop/mobile viewports, including service-worker updates and offline fallback. They cannot verify live third-party uptime. GitHub Actions runs both suites on pull requests and pushes to `main`/release branches. See [CONTRIBUTING.md](CONTRIBUTING.md) for browser setup, legacy Python entry points and the optional genuine-screenshot/live-smoke script.
 
 ### Deploy with GitHub Pages
 
@@ -113,11 +121,15 @@ GlowRoute uses Leaflet with OpenStreetMap tiles, the US Census Geocoder and Open
 - **13–68 stops:** an improvement-based heuristic; it isn't guaranteed to find the global optimum.
 - Road-based travel times and distances are modeled, **not live-traffic aware**. Route durations don't include parking, viewing time unless specified in the budget, closures or weather.
 - The app can compare time-oriented and distance-oriented orders and estimate repeated roadway from mapped line segments. That estimate isn't a guarantee of minimum backtracking.
+- Comparisons preserve your selected optimization objective. Mapped-itinerary totals are used consistently when available; summed matrix legs can differ. “Shortest modeled distance” optimizes the length of OSRM's fastest-road legs, not every possible road path.
 - A time-budget tour uses a heuristic and personal ratings to select stops; marked **Must see** stops are mandatory, or the app reports that the budget is too small.
+- Budget planning selects/orders by driving time; optional distance comparisons must fit the same modeled budget. Manual changes or full-route totals can exceed that estimate, in which case the summary warns you.
 - Geocoding sometimes interpolates house positions. Review `≈` pins and use **Pin** to fix a placement before navigating.
 - If the road-routing matrix is unavailable, optional **rough straight-line ordering** is explicitly approximate and can't support accurate driving-time budgeting.
 - Apple Maps and Google Maps links are split into compatible navigation legs. Check each leg before driving; the navigation app may choose different roads.
 - The public OSRM server is a **demo**, not production-grade infrastructure; public tile and geocoding services also have usage limits. Large-scale use needs suitable hosted services and rate limiting. Do not publish private production API keys inside this static app.
+- OSRM requests are serialized at least 1.1 seconds apart per tab, time out after 12 seconds, and reuse a bounded five-minute memory cache. Cancellation prevents old requests from changing a later trip. There is no application-wide rate limiter across users/tabs.
+- Respect the [OSRM service policy](https://routing.openstreetmap.de/about.html) and [Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/), including its application-wide one-request-per-second maximum and restrictions on bulk queries. Public services are suitable only for small, policy-compliant use; this static app cannot guarantee aggregate quotas or uptime. The [audit](docs/AUDIT-v1.5.md#service-research-and-limits) records the provider research and growth limitations.
 
 Please drive safely, use Live Drive Mode only while parked, and be considerate of residential neighborhoods.
 
@@ -127,7 +139,7 @@ Please drive safely, use Live Drive Mode only while parked, and be considerate o
 
 Bug reports, usability feedback, verified public display suggestions and contributions are welcome via [GitHub Issues](https://github.com/jacobmgoodnight/glowroute/issues).
 
-Potential future work includes higher-quality verified listing feeds (with permission), improvements to geocoding and routing reliability, better road-overlap optimization, and optional community-supplied display details. None of these are presented as current live features.
+Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the [v1.6 roadmap](ROADMAP.md). The next priorities are clearer sourced seasonal details, directory/import review tools, permitted regional catalogs and physical-device accessibility/navigation checks. No new data partnerships or live verification feeds are implied.
 
 Please respect directory source attribution, publishers' terms and residents' privacy when contributing listings.
 

@@ -1,0 +1,38 @@
+name: Public display or correction
+description: Suggest an authorized public listing, seasonal correction or removal.
+body:
+  - type: markdown
+    attributes:
+      value: "This is a PUBLIC issue, reviewed manually. Only include an already publicly advertised display address or one you are authorized to publish. For a private takedown concern, omit the address and refer to an existing catalog ID. Do not include resident names or contact details."
+  - type: dropdown
+    id: type
+    attributes:
+      label: Request
+      options: [New public display, Correction, Seasonal update, Removal]
+    validations:
+      required: true
+  - type: input
+    id: listing
+    attributes:
+      label: Display name or existing catalog ID
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Public source URL
+      description: Include an owner announcement or existing authorized listing when suggesting a new display.
+  - type: textarea
+    id: details
+    attributes:
+      label: Holiday, year and proposed change
+      description: Include dates/hours only when supported by the public source. Historical listings are not confirmed current-season displays.
+    validations:
+      required: true
+  - type: checkboxes
+    id: permission
+    attributes:
+      label: Publication permission
+      options:
+        - label: I have removed private contact information and any residential address that is not publicly advertised or authorized for publication.
+          required: true

@@ -14,10 +14,15 @@
   <title>GlowRoute — Holiday display route planner</title>
 </head>
 <body>
-  <header class="topbar"><div class="brand"><span class="brand-icon">✳</span><div><b>GlowRoute</b><small>Make every festive mile count</small></div></div><span class="version">BETA · V1.4</span></header>
+  <a class="skip-link" href="#planner-heading">Skip to route planner</a>
+  <header class="topbar"><div class="brand"><span class="brand-icon">✳</span><div><b>GlowRoute</b><small>Make every festive mile count</small></div></div><span class="version">V1.5</span></header>
   <main class="layout">
     <section class="panel controls" aria-label="Route planner">
-      <div class="panel-heading"><div><p class="eyebrow">PLAN YOUR DRIVE</p><h1>A better route, less backtracking.</h1><p class="subtext">Optimize a holiday display tour using actual driving roads, then open it in your favorite navigation app.</p></div></div>
+      <div class="panel-heading"><div><p class="eyebrow">PLAN YOUR DRIVE</p><h1 id="planner-heading" tabindex="-1">A better route, less backtracking.</h1><p class="subtext">Add displays, set your start and finish, then optimize. Open the drive in Apple Maps or Google Maps when you're ready.</p></div></div>
+      <section id="welcome" class="welcome hidden" aria-label="Get started"><h2>Where shall we go?</h2><p>Try an Indianapolis sample, or bring display addresses from your own town. Everything stays on this device.</p><div class="bulk-actions"><button type="button" id="welcome-sample" class="secondary">Explore a sample drive</button><button type="button" id="welcome-own" class="primary">Plan my own drive</button></div></section>
+      <p id="storage-status" role="alert" class="storage-status"></p>
+      <div id="update-notice" role="status" class="welcome hidden">Updated app code is ready. Your saved drives stay on this device. <button type="button" id="update-reload" class="secondary">Save & reload</button></div>
+      <button type="button" id="drive-resume" class="primary hidden">Resume interrupted drive</button>
       <section class="project-panel" aria-label="Saved holiday projects">
         <div class="project-top"><label class="field">Saved holiday drive<select id="project-picker" aria-label="Choose saved holiday project"></select></label><p class="hint" id="project-detail"></p></div>
         <div class="project-actions"><button id="project-new" class="secondary" type="button">+ New drive</button><button id="project-duplicate" class="secondary" type="button">↗ Next year / duplicate</button><button id="project-delete" class="mini-button danger" type="button">Delete</button></div>
@@ -59,15 +64,17 @@
         <label class="field"><span><span class="dot start"></span> Start</span><input id="start-input" placeholder="Enter a starting address" autocomplete="street-address"/></label>
         <label class="field"><span><span class="dot end"></span> Finish</span><input id="end-input" placeholder="Enter home or a destination" autocomplete="street-address"/></label>
       </div>
+      <div class="location-controls"><button id="use-location" type="button" class="secondary">Use my location</button><p id="location-status" class="hint" role="status">Optional starting point for this tab only. Location is requested when you press the button.</p></div>
       <div class="field-grid compact">
-        <label class="field"><span>Optimize for</span><select id="mode"><option value="duration">Fastest driving time</option><option value="distance">Least driving distance*</option></select></label>
-        <label class="field"><span>Highlights</span><select id="preset"><option value="top10">Featured 10</option><option value="top5">Featured 5</option><option value="all">All 25</option><option value="custom">My selection</option></select></label>
+        <label class="field"><span>Optimize for</span><select id="mode"><option value="duration">Fastest driving time</option><option value="distance">Shortest modeled distance*</option></select></label>
+        <label class="field"><span>Select displays</span><select id="preset"><option value="top10">Featured displays</option><option value="top5">Sample top five</option><option value="all">All displays</option><option value="custom">My selection</option></select></label>
       </div>
-      <div class="smart-controls" aria-label="Optional time budget">
+      <details class="smart-controls" aria-label="Optional time budget"><summary>Time budget & viewing time (optional)</summary>
         <label class="copy-check"><input type="checkbox" id="budget-enabled"/> Fit the best displays into a time budget</label>
         <div class="field-grid compact" id="budget-settings"><label class="field">Total trip minutes<input type="number" id="budget-minutes" min="10" max="720" value="90"/></label><label class="field">Minutes at each house<input type="number" id="view-minutes" min="0" max="60" value="4"/></label></div>
         <p class="hint">Includes the drive from start to finish and viewing time. Your ★ Must see houses are required. Display ratings are your private preferences, not community reviews.</p>
-      </div>
+        <p class="hint">Budget planning selects and orders stops by driving time. Distance alternatives are offered only when they fit the same budget.</p>
+      </details>
       <div class="action-row"><button class="primary" id="optimize">✧ Optimize my route</button><button class="secondary" id="reset">Reset</button></div>
       <button class="secondary hidden" id="estimate">Use rough straight-line ordering instead</button><p class="hint">* Distance measures the length of fastest-road legs, not every possible shortest path. Routing is not live-traffic aware.</p>
       <div role="status" aria-live="polite" id="status" class="status">Ready. Choose your displays and optimize.</div>
@@ -75,13 +82,13 @@
         <div class="metrics" id="metrics"></div>
         <p class="route-detail" id="route-detail"></p>
         <section class="route-comparison"><h3>Route quality and backtracking</h3><div id="route-choices" class="route-choices"><p class="hint">Road alternatives will appear after optimization.</p></div><p class="hint">Repeated-road measurements are estimates from mapped route geometry; traffic and road closures can change navigation.</p></section>
-        <section class="drive-panel" id="drive-panel"><div class="section-heading"><h3>Live Drive Mode</h3><button type="button" class="secondary" id="drive-start">Start drive</button></div><div id="drive-current" class="hint">Your next stop will appear here.</div><div class="bulk-actions"><button type="button" class="secondary" id="drive-visited" disabled>✓ Visited</button><button type="button" class="secondary" id="drive-skip" disabled>Skip & reroute</button><button type="button" class="secondary" id="drive-gps" disabled>Use my location & reroute</button><button type="button" class="secondary" id="drive-end" disabled>End drive</button></div><p class="hint">Use while parked. Position is optional and not saved; without GPS, rerouting starts at the last confirmed stop.</p></section>
+        <section class="drive-panel" id="drive-panel"><div class="section-heading"><h3>Live Drive Mode</h3><button type="button" class="secondary" id="drive-start">Start drive</button></div><div id="drive-current" role="status" aria-live="polite">Your next stop will appear here.</div><p id="drive-progress" class="hint"></p><div id="drive-next-links" class="bulk-actions"></div><div class="bulk-actions"><button type="button" class="primary" id="drive-visited" disabled>✓ Visited</button><button type="button" class="secondary" id="drive-skip" disabled>Skip & reroute</button><button type="button" class="secondary" id="drive-retry" disabled>Retry without GPS</button><button type="button" class="secondary" id="drive-gps" disabled>Use my location & reroute</button><button type="button" class="secondary" id="drive-end" disabled>End drive</button></div><button type="button" class="text-button" id="drive-full">Show full itinerary</button><p class="hint">For a passenger or while parked. Navigation runs in Maps. GPS is optional and never saved; resuming uses the last confirmed stop or your saved start.</p></section>
         <section class="sharing-panel"><h3>Share itinerary</h3><label class="copy-check"><input id="share-endpoints" type="checkbox"/> Include my start and finish in the link (may reveal a home address)</label><div class="bulk-actions"><button class="secondary" type="button" id="share-link">Copy share link</button><button class="secondary" type="button" id="share-text">Copy text itinerary</button><button class="secondary" type="button" id="share-file">Save itinerary file</button></div><p class="hint" id="share-status">Sharing includes house names and public addresses, never private notes, ratings or visited history.</p></section>
         <div class="export-head"><h2>Navigate this trip</h2><span id="segment-summary"></span></div>
         <div id="nav-buttons" class="nav-buttons"></div><div id="itinerary" class="itinerary"></div>
         <p class="hint" id="nav-hint">Map apps may change your exact driving roads for traffic or closures. The stop order will be preserved.</p>
       </div>
-      <div class="section-heading"><div><h2>Displays <span id="stop-count" class="count"></span></h2><p>Uncheck houses to skip them, or add your own.</p></div><button id="add-toggle" class="text-button">+ Add stop</button></div>
+      <div class="section-heading"><div><h2>Displays <span id="stop-count" class="count"></span></h2><p>Choose houses to visit. Presets keep your must-see stops; Clear selection removes all.</p></div><button id="add-toggle" class="text-button">+ Add stop</button></div>
       <form id="add-form" class="add-form hidden"><label>Display name<input id="new-name" required maxlength="80" placeholder="Spooky house"/></label><label>Address<input id="new-address" required maxlength="170" placeholder="123 Main St, Indianapolis, IN"/></label><button type="submit" class="secondary">Add to list</button></form>
       <div id="stop-list" class="stop-list"></div>
       <div class="toolbar"><button id="all-btn" class="text-button">Select all</button><button id="clear-btn" class="text-button">Clear selection</button><button id="export-json" class="text-button">Export stops</button><button id="bulk-toggle" class="secondary" type="button">⇪ Bulk import / paste list</button></div>
@@ -93,7 +100,7 @@
           <div class="bulk-actions"><button id="website-load" class="secondary" type="button">Load website / source snapshot</button><button id="website-open" class="mini-button" type="button">Open source ↗</button></div>
           <p id="website-note" class="hint">Supported Indy with Kids pages use an attributed catalog snapshot; other sources are retrieved only if their CORS policy permits it. Copy/paste works when access is blocked.</p>
         </div>
-        <label class="field">Default city/state for short addresses<input id="import-city" value="Indianapolis, IN 46219" autocomplete="off"/></label>
+        <label class="field">City/state for short addresses (optional)<input id="import-city" placeholder="e.g. Portland, OR" autocomplete="off"/></label>
         <label class="field">Paste text copied from the website, one address per line, or a table<textarea id="bulk-text" rows="7" spellcheck="false" placeholder="McBlackton Manor — 5543 Julian Ave&#10;Studio Fifty Horror — 262 S Audubon Rd&#10;Or paste a spreadsheet with Name and Address columns"></textarea></label>
         <div class="bulk-actions">
           <label class="secondary upload-file">Choose CSV / TSV / TXT / JSON<input type="file" id="import-file" accept=".csv,.tsv,.txt,.json,text/plain,text/csv,application/json"/></label>
@@ -110,7 +117,7 @@
       <div class="map-tools"><button class="map-tool" id="fit" title="Fit markers" aria-label="Fit markers">⌗</button></div>
     </section>
   </main>
-  <footer><span>Built for spooky nights and bright lights.</span><span>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> · Routing: OSRM demonstration service during testing.</span></footer>
+  <footer><span>Built for spooky nights and bright lights.</span><span>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> · Routing: <a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noopener">OSRM public demo</a> · <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noopener">Fix the map</a></span></footer>
   <dialog id="pin-dialog"><form method="dialog"><h3>Set a map pin</h3><p id="pin-info"></p><p class="subtext">Tap the correct house location on the map, then press Done. This is useful when an address cannot be located accurately.</p><div class="action-row"><button value="cancel" class="secondary">Cancel</button><button value="done" class="primary">Done</button></div></form></dialog>
 </body>
 </html>
