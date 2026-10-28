@@ -37,6 +37,12 @@ Patch validation: 71 Node tests and 26 browser scenario groups, including drag/k
 
 A separate Windows Edge 156 smoke check used real Leaflet, OSM tiles and OSRM routing with public Denver civic landmarks. Widening the planner from 490 to 690 pixels redrew the 726-pixel map correctly; 20 map tiles loaded and no page errors were reported. Landmarks are illustrative, not holiday listings.
 
-## Deferred work
+## v1.6.2 follow-up
+
+Live Drive Mode includes a compact **Remember this display** section with 1–5 ratings, favorite toggling and expandable private notes. It uses the existing project display records. Notes save on input; save failures are explicit. Controls are bound to the displayed stop and project, disabled while routing, reset for the next stop and hidden after completion or ending the drive. Returning from the full list refreshes the current values. Feedback edits do not reroute or change the drive fingerprint, and shared itineraries continue to exclude private notes and ratings.
+
+Validation: 71 Node tests and 29 browser scenario groups on Windows Edge 156, including desktop/mobile checks for immediate saving, reload/resume, full-list synchronization, visit/skip transitions, completed-drive cleanup, unavailable routing, unchanged request counts, literal note text, sharing privacy and storage failure. Genuine desktop/mobile captures with real Leaflet/OSM/OSRM and public Denver landmark examples were visually reviewed. No new dependencies or saved-data migration; physical mobile/Safari checks remain outstanding.
+
+## Remaining work
 
 Additional regional feeds require source-specific rights and freshness review. Photos require a sustainable licensing/privacy/bandwidth policy. Physical-device accessibility/navigation checks need the relevant devices. More elaborate overlap/budget algorithms, a hosted moderation system and wider refactoring remain outside this discovery release. See [ROADMAP.md](../ROADMAP.md).

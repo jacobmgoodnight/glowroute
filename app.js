@@ -733,6 +733,7 @@ function updateDrivePanel(){
  $('drive-resume').classList.toggle('hidden',!savedDrive()||driveActive);
  $('drive-start').disabled=!currentRoute||!!currentRoute.approx||driveActive;
  for(const id of ['drive-visited','drive-skip','drive-gps','drive-retry','drive-end'])$(id).disabled=!driveActive||busy;
+ updateDriveFeedback();
  $('drive-next-links').replaceChildren();
  if(!driveActive){el.textContent=currentRoute?'Ready to start. Live Drive Mode requires road routing.':'Optimize a road route first.';return;}
  const next=state.displays.find(d=>d.id===driveRemainingIds[0]);
@@ -742,6 +743,32 @@ function updateDrivePanel(){
   const link=document.createElement('a');link.className='secondary';link.href=fn(waypointValue(driveAnchor),[waypointValue(next||driveFinish)]);link.target='_blank';link.rel='noopener noreferrer';link.textContent=`Navigate · ${label} ↗`;$('drive-next-links').append(link);
  }
  $('drive-visited').disabled=busy||!next;$('drive-skip').disabled=busy||!next;
+}
+function updateDriveFeedback(){
+ const panel=$('drive-feedback'),item=driveActive?state.displays.find(d=>d.id===driveRemainingIds[0]):null;
+ const changed=panel.dataset.displayId!==(item?.id||'')||panel.dataset.projectId!==activeProjectId;
+ panel.classList.toggle('hidden',!item);panel.disabled=!item||busy;
+ panel.dataset.displayId=item?.id||'';panel.dataset.projectId=activeProjectId;
+ if(changed){$('drive-note-details').open=false;$('drive-feedback-status').textContent='';}
+ $('drive-feedback-name').textContent=item?`For ${item.name}`:'';
+ $('drive-rating').value=String(item?.rating>=1&&item?.rating<=5?item.rating:3);
+ $('drive-favorite').setAttribute('aria-pressed',String(!!item?.favorite));
+ $('drive-favorite').textContent=item?.favorite?'♥ Favorited':'♡ Favorite';
+ const notes=item?.visitNotes||'';
+ // Avoid replacing a focused textarea on unrelated route-summary updates.
+ if($('drive-notes').value!==notes)$('drive-notes').value=notes;
+}
+function editDriveFeedback(field,value){
+ const panel=$('drive-feedback');
+ if(!driveActive||busy||panel.dataset.projectId!==activeProjectId||panel.dataset.displayId!==driveRemainingIds[0])return;
+ const item=state.displays.find(d=>d.id===panel.dataset.displayId);if(!item)return;
+ if(field==='rating'){const rating=Number(value);if(!Number.isInteger(rating)||rating<1||rating>5)return;item.rating=rating;}
+ else if(field==='favorite')item.favorite=!item.favorite;
+ else if(field==='visitNotes')item.visitNotes=value.slice(0,500);
+ else return;
+ const saved=save();
+ $('drive-feedback-status').textContent=saved?'Saved on this device.':'Changes are only in this tab. Browser storage is unavailable; export a backup before closing.';
+ if(field!=='visitNotes'){updateDriveFeedback();renderStops();}
 }
 function driveFingerprint(){return JSON.stringify([state.start,state.end,state.mode,state.budgetEnabled,state.budgetMinutes,state.viewMinutes,getSelected().map(d=>[d.id,d.address])]);}
 function savedDrive(){
@@ -881,7 +908,11 @@ function wire(){
  $('use-location').addEventListener('click',useStartingLocation);
  $('drive-resume').addEventListener('click',resumeDrive);
  $('drive-retry').addEventListener('click',()=>rerouteLive(false));
- $('drive-full').addEventListener('click',()=>{const focused=document.body.classList.toggle('driving');$('drive-full').textContent=focused?'Show full itinerary':'Focus on next stop';});
+ $('drive-full').addEventListener('click',()=>{const focused=document.body.classList.toggle('driving');$('drive-full').textContent=focused?'Show full itinerary':'Focus on next stop';updateDrivePanel();});
+ $('drive-rating').addEventListener('change',event=>editDriveFeedback('rating',event.target.value));
+ $('drive-favorite').addEventListener('click',()=>editDriveFeedback('favorite'));
+ $('drive-notes').addEventListener('input',event=>editDriveFeedback('visitNotes',event.target.value));
+ $('drive-notes').addEventListener('change',renderStops);
  $('start-input').addEventListener('change',e=>setEndpoint('start',e.target.value.trim()));
  $('end-input').addEventListener('change',e=>setEndpoint('end',e.target.value.trim()));
  $('mode').addEventListener('change',e=>{state.mode=e.target.value;save();invalidate();});

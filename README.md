@@ -20,7 +20,7 @@ Built for phones and desktops. No account required.
 
 **New in v1.5:** nationwide routing, dependable time/distance selection, cancellable and cached routing requests, a simpler first visit, focused mobile driving with resume, safer backups/sharing and reliable PWA updates. Read the [changelog](CHANGELOG.md), [audit and validation report](docs/AUDIT-v1.5.md), or [prioritized roadmap](ROADMAP.md).
 
-**New in v1.6:** clearer seasonal/source context, directory sorting and filtered bulk selection, import diagnostics and stable review edits, plus personal preferences preserved in stop-list JSON round-trips. **v1.6.1 adds an adjustable desktop planner/map divider.** See the [v1.6 scope and validation](docs/RELEASE-v1.6.md). The screenshots above were captured during v1.5.
+**New in v1.6:** clearer seasonal/source context, directory sorting and filtered bulk selection, import diagnostics and stable review edits, plus personal preferences preserved in stop-list JSON round-trips. Follow-up patches add an adjustable desktop planner/map divider and current-display ratings, favorites and private notes in Live Drive Mode. See the [v1.6 scope and validation](docs/RELEASE-v1.6.md). The screenshots above were captured during v1.5.
 
 ## ✨ What can GlowRoute do?
 
@@ -48,6 +48,8 @@ GlowRoute works for **your own neighborhood or any area where you have display a
 **Tip:** You can review imported addresses and edit a map pin before routing. Some residential addresses are geocoded only approximately.
 
 **Desktop layout:** Drag the divider between the planner and map to resize them; your browser remembers the width. Focus the divider and use Left/Right arrows (Shift for larger steps), Home/End for the limits, or Enter to reset. Double-click also resets; Escape cancels a drag. Phones keep the stacked layout.
+
+**During a drive:** A passenger or parked driver can rate and favorite the current display under **Remember this display**, or expand **Private notes**. Notes save as you type, before marking the display Visited or skipping it. Feedback belongs to that display and is retained when resuming an interrupted drive. It stays on this browser/device and is excluded from shared itineraries; it does not sync with another rider's phone. Private backups and JSON stop exports can include these notes. Editing feedback does not rearrange the active route.
 
 ### Bring a list of your own displays
 

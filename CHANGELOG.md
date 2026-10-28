@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.2 — Live Drive display feedback
+
+- Rate the current display from 1–5, toggle its favorite status and add private notes directly in Live Drive Mode. Keep navigation and visit/skip actions prominent; expand notes only when needed.
+- Save notes as they are typed, using existing per-display project data. Feedback stays with the original stop through visit/skip, reroute failure and reload/resume. Disable editing during rerouting and hide it when no display remains.
+- Keep ratings, favorites and notes synchronized with the full display list. Changes do not reorder an active drive or trigger extra routing requests. Personal feedback stays out of shared itineraries; backups and stop-list exports retain the existing private-data behavior.
+- Report browser storage failures without claiming the feedback was saved. Update the PWA shell without changing saved-project formats or adding dependencies.
+
 ## 1.6.1 — Adjustable desktop planner
 
 - Drag the divider between the planner and map to choose their widths. Keyboard controls support arrow keys, larger Shift steps, Home/End limits, Enter to reset and Escape to cancel a drag; double-click also resets.
