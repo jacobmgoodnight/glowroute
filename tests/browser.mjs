@@ -24,7 +24,7 @@ const server=createServer(async(req,res)=>{
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const base=`http://localhost:${server.address().port}`;
 const mapStub=()=>{
- window.L={map:()=>({setView(){return this;},on(){},flyTo(){return this;},fitBounds(){return this;}}),control:{zoom:()=>({addTo(){}})},tileLayer:()=>({addTo(){}}),layerGroup:()=>({addTo(){return this;},clearLayers(){},getLayers(){return [];}}),marker:()=>({bindPopup(){return this;},addTo(){return this;}}),circleMarker:()=>({addTo(){return this;}}),divIcon:()=>({}),polyline:()=>({addTo(){return this;}}),latLngBounds:()=>({extend(){},isValid(){return false;},pad(){return this;}})};
+ window.L={map:()=>({setView(){return this;},on(){},flyTo(){return this;},fitBounds(){return this;},invalidateSize(){window.__mapResizes=(window.__mapResizes||0)+1;return this;}}),control:{zoom:()=>({addTo(){}})},tileLayer:()=>({addTo(){}}),layerGroup:()=>({addTo(){return this;},clearLayers(){},getLayers(){return [];}}),marker:()=>({bindPopup(){return this;},addTo(){return this;}}),circleMarker:()=>({addTo(){return this;}}),divIcon:()=>({}),polyline:()=>({addTo(){return this;}}),latLngBounds:()=>({extend(){},isValid(){return false;},pad(){return this;}})};
  Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.__copied=text;}}});
 };
 const displays=Array.from({length:4},(_,i)=>({id:`demo${i+1}`,name:['Denver Art Museum','Colorado State Capitol','Denver Botanic Gardens','Denver Public Library'][i],address:['100 W 14th Avenue Pkwy, Denver, CO','200 E Colfax Ave, Denver, CO','1007 York St, Denver, CO','10 W 14th Ave Pkwy, Denver, CO'][i],lat:39.73+.001*(i+1),lon:-104.95+.001*(i+1),approved:true,geoSource:'manual',rating:3,mustSee:i===0,visitNotes:'PRIVATE NOTE'}));
@@ -66,6 +66,38 @@ function pass(message){checks++;console.log(`PASS ${message}`);}
 const browser=await chromium.launch({headless:true,...(process.env.GLOWROUTE_BROWSER_EXECUTABLE?{executablePath:process.env.GLOWROUTE_BROWSER_EXECUTABLE}:{})});
 console.log(`Browser engine: ${browser.version()}`);
 try{
+ {
+  const {context,page,errors}=await prepare(browser,{width:1366,height:900});
+  const handle=page.getByRole('separator',{name:'Resize route planner and map'}),planner=page.locator('#planner-panel');
+  const width=async()=>Math.round((await planner.boundingBox()).width);
+  const saved=await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2'));
+  assert.equal(await width(),490);
+  const grip=await handle.boundingBox();await page.mouse.move(grip.x+grip.width/2,grip.y+80);await page.mouse.down();await page.mouse.move(grip.x+grip.width/2+150,grip.y+80,{steps:5});await page.mouse.up();
+  assert.equal(await width(),640);assert.match(await handle.getAttribute('aria-valuetext'),/640 pixels/);
+  await page.waitForFunction(()=>window.__mapResizes>1);
+  await handle.press('ArrowLeft');assert.equal(await width(),620);await handle.press('Shift+ArrowRight');assert.equal(await width(),720);
+  await page.reload();assert.equal(await width(),720);
+  await page.setViewportSize({width:900,height:900});await page.waitForFunction(()=>document.querySelector('#planner-panel').getBoundingClientRect().width<600);assert.equal(await width(),556);assert((await page.locator('.map-area').boundingBox()).width>=320);
+  await page.setViewportSize({width:390,height:844});assert(await handle.isHidden());assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await page.setViewportSize({width:1366,height:900});await page.waitForFunction(()=>document.querySelector('#planner-panel').getBoundingClientRect().width===720);
+  await handle.press('Home');assert.equal(await width(),355);await handle.press('End');assert.equal(await width(),887);await handle.press('Enter');assert.equal(await width(),490);
+  assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:planner-width:v1')),null);
+  assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),saved);
+  assert.deepEqual(errors,[]);await context.close();pass('resizable desktop panes: drag, keyboard, persistence, viewport limits, mobile layout, map redraw and untouched projects');
+ }
+ {
+  const {context,page,errors}=await prepare(browser,{width:1366,height:900});const handle=page.locator('#panel-resizer');
+  await handle.press('ArrowRight');let grip=await handle.boundingBox();await page.mouse.move(grip.x+12,grip.y+80);await page.mouse.down();await page.mouse.move(grip.x+112,grip.y+80);await page.keyboard.press('Escape');await page.mouse.up();
+  assert.equal(Math.round((await page.locator('#planner-panel').boundingBox()).width),510);assert.equal(await page.locator('html').evaluate(e=>e.classList.contains('resizing-panels')),false);
+  assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:planner-width:v1')),'510');
+  await handle.dblclick();assert.equal(Math.round((await page.locator('#planner-panel').boundingBox()).width),490);assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:planner-width:v1')),null);
+  assert.deepEqual(errors,[]);await context.close();pass('cancelled divider drag restores width and clears pointer state; double-click resets');
+ }
+ {
+  const {context,page,errors}=await prepare(browser,{width:1366,height:900},{storageFail:true});
+  await page.locator('#panel-resizer').press('ArrowRight');assert.equal(Math.round((await page.locator('#planner-panel').boundingBox()).width),510);await page.locator('#panel-resizer').press('Enter');
+  assert.deepEqual(errors,[]);await context.close();pass('pane resizing remains usable when preference storage is unavailable');
+ }
  for(const viewport of [{width:1366,height:900},{width:390,height:844}]){
   const {context,page,control,errors}=await prepare(browser,viewport);
   assert(await page.locator('#welcome').isHidden());await optimize(page);

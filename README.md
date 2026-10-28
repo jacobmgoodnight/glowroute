@@ -18,9 +18,9 @@ Built for phones and desktops. No account required.
 
 > **Beta:** GlowRoute is an independently maintained route-planning tool, not a live directory of verified operating displays. Check listing dates, locations, hours and navigation before heading out.
 
-**New in v1.5:** nationwide routing, dependable time/distance selection, cancellable and cached routing requests, a simpler first visit, focused mobile driving with resume, safer backups/sharing and reliable PWA updates. Read the [changelog](CHANGELOG.md), [audit and validation report](docs/AUDIT-v1.5.md), or [prioritized v1.6 roadmap](ROADMAP.md).
+**New in v1.5:** nationwide routing, dependable time/distance selection, cancellable and cached routing requests, a simpler first visit, focused mobile driving with resume, safer backups/sharing and reliable PWA updates. Read the [changelog](CHANGELOG.md), [audit and validation report](docs/AUDIT-v1.5.md), or [prioritized roadmap](ROADMAP.md).
 
-**v1.6 release candidate:** clearer seasonal/source context, directory sorting and filtered bulk selection, import diagnostics and stable review edits, plus personal preferences preserved in stop-list JSON round-trips. See the [v1.6 scope and validation](docs/RELEASE-v1.6.md). The screenshots above were captured during v1.5.
+**New in v1.6:** clearer seasonal/source context, directory sorting and filtered bulk selection, import diagnostics and stable review edits, plus personal preferences preserved in stop-list JSON round-trips. **v1.6.1 adds an adjustable desktop planner/map divider.** See the [v1.6 scope and validation](docs/RELEASE-v1.6.md). The screenshots above were captured during v1.5.
 
 ## ✨ What can GlowRoute do?
 
@@ -46,6 +46,8 @@ GlowRoute works for **your own neighborhood or any area where you have display a
 5. Open a navigation leg in **Apple Maps or Google Maps**, or start **Live Drive Mode** for a focused next-stop view. A passenger or parked driver can mark visits, skip/reroute, retry without GPS and return to the full itinerary. After a reload, **Resume interrupted drive** uses saved remaining stops and your last confirmed display or saved starting address.
 
 **Tip:** You can review imported addresses and edit a map pin before routing. Some residential addresses are geocoded only approximately.
+
+**Desktop layout:** Drag the divider between the planner and map to resize them; your browser remembers the width. Focus the divider and use Left/Right arrows (Shift for larger steps), Home/End for the limits, or Enter to reset. Double-click also resets; Escape cancels a drag. Phones keep the stacked layout.
 
 ### Bring a list of your own displays
 
@@ -146,7 +148,7 @@ Please drive safely, use Live Drive Mode only while parked, and be considerate o
 
 Bug reports, usability feedback, verified public display suggestions and contributions are welcome via [GitHub Issues](https://github.com/jacobmgoodnight/glowroute/issues).
 
-Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the [v1.6 roadmap](ROADMAP.md). The next priorities are clearer sourced seasonal details, directory/import review tools, permitted regional catalogs and physical-device accessibility/navigation checks. No new data partnerships or live verification feeds are implied.
+Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the [roadmap](ROADMAP.md). The next priorities are clearer sourced seasonal details, directory/import review tools, permitted regional catalogs and physical-device accessibility/navigation checks. No new data partnerships or live verification feeds are implied.
 
 Please respect directory source attribution, publishers' terms and residents' privacy when contributing listings.
 
