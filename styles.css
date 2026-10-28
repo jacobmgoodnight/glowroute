@@ -38,3 +38,6 @@ button:disabled{cursor:not-allowed}summary{cursor:pointer;font-size:13px;font-we
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
 .drive-panel:not(.active)>.bulk-actions,.drive-panel:not(.active)>#drive-full,.drive-panel:not(.active)>#drive-progress,.drive-panel.active #drive-start{display:none}
 .driving .controls>#status.error{display:block!important}
+
+/* v1.6: seasonal source context and stable, accessible review controls. */
+.directory-title{font-weight:750;cursor:pointer}.directory-season{font-weight:700;color:#f7dc9e!important}.directory-season.archive{color:#ffbaa2!important}.directory-season.future{color:#c8c6ff!important}.directory-existing{color:#a3f9d0!important}.directory-item summary{font-size:11px;padding:7px 0}.directory-item details p{font-size:11px;line-height:1.5;color:#c2cfdf;margin:4px 0;overflow-wrap:anywhere}.public-details{white-space:normal;overflow-wrap:anywhere}.import-diagnostics{border:1px solid #5b4f3c;padding:0 9px;border-radius:8px;margin:8px 0}.import-diagnostics p{overflow-wrap:anywhere}.import-review-row:has(input[type=checkbox]:disabled){border-left:3px solid #728194;padding-left:8px}#import-review-summary,#directory-summary{margin:2px 0}

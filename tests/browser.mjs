@@ -8,7 +8,8 @@ import assert from 'node:assert/strict';
 const require=createRequire(import.meta.url);
 const {chromium}=require(process.env.GLOWROUTE_PLAYWRIGHT_PATH||'playwright');
 const root=resolve(fileURLToPath(new URL('..',import.meta.url)));
-let swRelease='v1-5-0',failDirectory=false;
+const currentShell=(await readFile(resolve(root,'sw.js'),'utf8')).match(/const CACHE='glowroute-shell-([^']+)'/)[1];
+let swRelease=currentShell,failDirectory=false;
 const mime={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.png':'image/png','.webmanifest':'application/manifest+json'};
 const server=createServer(async(req,res)=>{
  try{
@@ -16,7 +17,7 @@ const server=createServer(async(req,res)=>{
   const file=resolve(root,'.'+path);if(!file.startsWith(root+sep))throw Error('outside root');
   if(failDirectory&&path.endsWith('/directory/catalog.json')){res.writeHead(503);res.end();return;}
   let bytes=await readFile(file);
-  if(path==='/sw.js')bytes=Buffer.from(bytes.toString().replace('glowroute-shell-v1-5-0','glowroute-shell-'+swRelease));
+  if(path==='/sw.js')bytes=Buffer.from(bytes.toString().replace(/const CACHE='glowroute-shell-[^']+';/,`const CACHE='glowroute-shell-${swRelease}';`));
   res.writeHead(200,{'Content-Type':mime[extname(file)]||'application/octet-stream','Cache-Control':'no-store'});res.end(bytes);
  }catch{res.writeHead(404);res.end('Not found');}
 });
@@ -34,7 +35,7 @@ const distance=(i,j)=>i===j?0:(i===0&&j===4||i===1&&j===5||i>j&&i<5&&j>0)?100:30
 async function prepare(browser,viewport,{saved=true,storageFail=false,corrupt=false}={}){
  const context=await browser.newContext({viewport,serviceWorkers:'block'}),page=await context.newPage(),errors=[];
  page.on('pageerror',error=>errors.push(error.message));
- const control={fail:false,geometryFail:false,delay:0,calls:[],gpsCalls:0};
+ const control={fail:false,geometryFail:false,delay:0,calls:[],gpsCalls:0,importDelay:0};
  await context.addInitScript(mapStub);
  await context.addInitScript(({saved,storageFail,corrupt,data})=>{
   if(!sessionStorage.getItem('test-initialized')){
@@ -44,6 +45,7 @@ async function prepare(browser,viewport,{saved=true,storageFail=false,corrupt=fa
  },{saved,storageFail,corrupt,data:fixture()});
  await context.route('**/*',async route=>{
   const url=route.request().url();
+  if(url==='https://listing.example.test/displays'){if(control.importDelay)await new Promise(r=>setTimeout(r,control.importDelay));await route.fulfill({contentType:'text/plain',body:'Late display — 888 Test St, Portland, OR'}).catch(()=>{});return;}
   if(url.includes('router.project-osrm.org')){
    control.calls.push(url);if(control.delay)await new Promise(r=>setTimeout(r,control.delay));
    if(control.fail||control.geometryFail&&url.includes('/route/')&&(control.geometryFail===true||indices(url)[1]===4)){await route.fulfill({status:503,body:'Unavailable'});return;}
@@ -102,9 +104,38 @@ try{
   assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),stored);
   page.once('dialog',dialog=>dialog.accept());await page.locator('#projects-import').setInputFiles({name:'valid-backup.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({...JSON.parse(stored),version:2}))});await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Projects restored successfully'));assert.equal(await page.locator('.stop').count(),6);
   pass(`${viewport.width}px: safe shared import, independent projects, import deduplication, atomic restore validation`);
+  await page.locator('#bulk-toggle').click();await page.locator('#import-file').setInputFiles({name:'review.csv',mimeType:'text/csv',buffer:Buffer.from('Name,Address\nA,"301 New St, Portland, OR"\nB,"302 New St, Portland, OR"\nBad,no numbered address')});
+  assert.equal(await page.locator('.import-review-row').count(),2);assert.match(await page.locator('.import-diagnostics summary').innerText(),/1 ignored/);
+  await page.locator('.import-review-row').first().locator('input[aria-label^="Display name"]').fill('Edited label');await page.locator('.import-review-row').nth(1).locator('input[type=checkbox]').uncheck();
+  await page.locator('#import-mode').selectOption('replace');assert.equal(await page.locator('.import-review-row').first().locator('input[aria-label^="Display name"]').inputValue(),'Edited label');assert.equal(await page.locator('.import-review-row').nth(1).locator('input[type=checkbox]').isChecked(),false);
+  await page.locator('#import-mode').selectOption('append');await page.locator('#import-select-none').click();assert(await page.locator('#import-confirm').isDisabled());await page.locator('#import-select-all').click();assert.match(await page.locator('#import-review-summary').innerText(),/2 selected/);
+  const firstAddress=page.locator('.import-review-row').first().locator('input[aria-label^="Street address"]');await firstAddress.fill(displays[0].address);assert.match(await page.locator('#import-review-summary').innerText(),/1 already listed/);assert(await page.locator('.import-review-row').first().locator('input[type=checkbox]').isDisabled());await firstAddress.fill('301 New St, Portland, OR');await page.locator('.import-review-row').nth(1).locator('input[type=checkbox]').uncheck();await page.locator('#import-confirm').click();assert.equal(await page.locator('.stop').count(),7);
+  pass(`${viewport.width}px: rejected-row diagnostics, stable edited preview across modes, bulk selection and append duplicate safety`);
+  await page.locator('#directory-toggle').click();await page.waitForFunction(()=>document.querySelector('#directory-status').textContent.includes('31 catalog entries'));
+  await page.locator('#directory-sort').selectOption('year');assert.match(await page.locator('.directory-row').first().innerText(),/2026.*Check operation/);await page.locator('#directory-year').selectOption('2025');assert.match(await page.locator('.directory-row').first().innerText(),/Archive/);assert.match(await page.locator('.directory-row').first().innerText(),/Source reviewed/);
+  await page.locator('#directory-select-visible').click();assert.match(await page.locator('#directory-summary').innerText(),/12 selected/);await page.locator('#directory-year').selectOption('2026');assert.match(await page.locator('#directory-summary').innerText(),/12 outside/);await page.locator('#directory-select-visible').click();assert.match(await page.locator('#directory-summary').innerText(),/31 selected/);await page.locator('#directory-select-visible').click();assert.match(await page.locator('#directory-summary').innerText(),/12 selected/);await page.locator('#directory-clear-selection').click();
+  const firstCheckbox=page.locator('.directory-row input').first();await firstCheckbox.check();assert.equal(await firstCheckbox.getAttribute('id'),await page.evaluate(()=>document.activeElement.id));
+  await page.locator('#submission-toggle').click();await page.locator('#submit-address').fill('PRIVATE ADDRESS');await page.locator('#submit-source').fill('https://private.example');await page.locator('#submit-type').selectOption('removal');await page.locator('#submit-name').fill('indy-halloween-01');assert(await page.locator('#submit-address').isDisabled());await page.evaluate(()=>{window.open=url=>{window.__suggestion=url;return null;};});page.once('dialog',dialog=>dialog.accept());await page.locator('#submission-form button[type=submit]').click();const suggestion=new URL(await page.evaluate(()=>window.__suggestion));assert.match(suggestion.searchParams.get('title'),/Removal request/);assert(!suggestion.searchParams.get('body').includes('PRIVATE ADDRESS'));
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  pass(`${viewport.width}px: seasonal directory labels, source review dates, filtered bulk selection, keyboard focus and ID-only removal drafts`);
   assert.deepEqual(errors,[]);await context.close();
  }
  // Full outage keeps an explicit rough fallback with no invented driving time.
+ for(const viewport of [{width:1366,height:900},{width:390,height:844}]){
+  const {context,page,errors}=await prepare(browser,viewport);
+  await page.locator('.stop').first().locator('.stop-preferences button').first().click();await page.locator('.stop').first().locator('.rating-select').selectOption('5');await page.locator('.stop').first().locator('summary').click();await page.locator('.stop').first().locator('button[title="Mark this house visited on this drive"]').click();await page.locator('.stop').nth(1).locator('input[type=checkbox]').uncheck();
+  const [download]=await Promise.all([page.waitForEvent('download'),page.locator('#export-json').click()]);const exported=await readFile(await download.path());
+  await page.locator('#project-new').click();await page.locator('#project-name').fill('Round trip');await page.locator('#project-holiday').selectOption('Christmas');await page.locator('#project-create-form button[type=submit]').click();await page.locator('#bulk-toggle').click();await page.locator('#import-file').setInputFiles({name:'stops.json',mimeType:'application/json',buffer:exported});await page.locator('#import-confirm').click();
+  assert.equal(await page.locator('#stop-count').innerText(),'3/4');const restored=await page.evaluate(()=>{const p=JSON.parse(localStorage.getItem('glowroute:projects:v2'));return p.projects.find(d=>d.id===p.activeId).state;});
+  const first=restored.displays.find(d=>d.name==='Denver Art Museum');assert.equal(first.favorite,true);assert.equal(first.rating,5);assert.equal(first.mustSee,true);assert.equal(first.visited,true);assert.equal(first.visitNotes,'PRIVATE NOTE');assert.equal(first.approved,true);assert.equal(first.geoSource,'manual');assert.notEqual(first.id,displays[0].id);
+  await page.locator('#bulk-toggle').click();await page.locator('#bulk-text').fill(Array.from({length:71},(_,i)=>`${301+i} New St, Portland, OR`).join('\n'));await page.locator('#import-preview').click();assert.equal(await page.locator('.import-review-row').count(),71);assert(await page.locator('#import-confirm').isDisabled());await page.locator('#import-select-none').click();await page.locator('.import-review-row input[type=checkbox]').nth(0).check();await page.locator('.import-review-row input[type=checkbox]').nth(1).check();await page.locator('#import-confirm').click();assert.equal(await page.locator('.stop').count(),6);
+  assert.deepEqual(errors,[]);await context.close();pass(`${viewport.width}px: actual export/import preserves personal metadata and manual pins; oversized list reduced to a valid subset`);
+ }
+ {
+  const {context,page,control,errors}=await prepare(browser,{width:390,height:844});control.importDelay=700;
+  await page.locator('#bulk-toggle').click();await page.locator('#website-url').fill('https://listing.example.test/displays');const requested=page.waitForRequest('https://listing.example.test/displays');await page.locator('#website-load').click();await requested;await page.locator('#project-new').click();await page.locator('#project-name').fill('Different drive');await page.locator('#project-create-form button[type=submit]').click();await page.waitForTimeout(900);
+  assert(await page.locator('#bulk-panel').isHidden());assert.equal(await page.locator('.stop').count(),0);assert.match(await page.locator('#status').innerText(),/Created Different drive/);assert.deepEqual(errors,[]);await context.close();pass('interrupted website import cannot reopen or populate a different project');
+ }
  {
   const {context,page,errors}=await prepare(browser,{width:390,height:844});
   await page.locator('.smart-controls summary').click();await page.locator('#budget-enabled').check();await page.locator('#budget-minutes').fill('20');await optimize(page);
@@ -157,13 +188,13 @@ try{
   await page.goto(base);await page.waitForFunction(()=>!!window.L);assert.equal(cdnCalls,2);assert.deepEqual(errors,[]);await context.close();pass('map library alternate-CDN fallback in actual module application');
  }
  {
-  swRelease='v1-4-test';const context=await browser.newContext({serviceWorkers:'allow'});await context.addInitScript(mapStub);await context.route(/https:\/\/.*/,route=>route.abort());
+  swRelease='previous-release-test';const context=await browser.newContext({serviceWorkers:'allow'});await context.addInitScript(mapStub);await context.route(/https:\/\/.*/,route=>route.abort());
   const page=await context.newPage();await page.goto(base);await page.evaluate(async()=>{await navigator.serviceWorker.ready;});await page.waitForFunction(()=>!!navigator.serviceWorker.controller);
   await page.evaluate(()=>{localStorage.setItem('keep-this-project','unchanged');return caches.open('unrelated-cache').then(c=>c.put('/unrelated',new Response('keep')));});
-  swRelease='v1-5-0';await page.evaluate(async()=>{const r=await navigator.serviceWorker.getRegistration();await r.update();});
-  await page.waitForFunction(async()=> (await caches.keys()).includes('glowroute-shell-v1-5-0'));
+  swRelease=currentShell;await page.evaluate(async()=>{const r=await navigator.serviceWorker.getRegistration();await r.update();});
+  await page.waitForFunction(async name=> (await caches.keys()).includes(name),'glowroute-shell-'+currentShell);
   await page.locator('#update-notice').waitFor({state:'visible'});await page.reload();assert.equal(await page.evaluate(()=>localStorage.getItem('keep-this-project')),'unchanged');
-  const keys=await page.evaluate(()=>caches.keys());assert(keys.includes('unrelated-cache'));assert(!keys.includes('glowroute-shell-v1-4-test'));
+  const keys=await page.evaluate(()=>caches.keys());assert(keys.includes('unrelated-cache'));assert(!keys.includes('glowroute-shell-previous-release-test'));
   failDirectory=true;const cached=await page.evaluate(async()=>{const r=await fetch('./directory/catalog.json');return r.headers.get('X-GlowRoute-Cached');});assert.equal(cached,'true');failDirectory=false;
   await context.setOffline(true);await page.reload();assert.match(await page.title(),/GlowRoute/);assert.equal(await page.evaluate(()=>localStorage.getItem('keep-this-project')),'unchanged');await context.close();pass('PWA: release update, cache cleanup scoped to GlowRoute, local data retained, marked cached directory, offline shell');
  }

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.6.0 — Discovery and reviewed imports (release candidate)
+
+- Clearly label archived, current-year unconfirmed and future-season directory references. Show source review dates independently of operating verification and expose attributed public notes. Optional locality, description, dates and hours are supported only when an editor supplies them with a source; existing listings receive no invented information.
+- Add directory sorting, Select/Deselect shown, global selection clearing and counts for selections outside the current filters. Keep checkbox focus and indicate records already in the active drive.
+- Keep edited names, addresses and unchecked rows when switching import modes. Add bulk selection, rejected CSV/JSON record diagnostics and explicit selected/existing/unchecked counts. Allow reviewing up to 500 unique addresses and selecting a subset within project capacity; existing append-mode records are never overwritten.
+- Restore safe personal preferences, notes, visit state, source attribution, saved selection and approved manual pins from stop-list JSON exports using fresh IDs. Same-season verification requires matching exported holiday/year; another season resets verification and visit/skip state while keeping personal preferences and pins. Full backups remain the way to restore projects and endpoints.
+- Cancel obsolete website/file imports when the project or input changes. Unknown live-page dates remain unknown rather than adopting the current project year.
+- Detect source-only catalog updates (notes/hours/review dates) without replacing private notes, favorites or pins. Changing an address also clears old seasonal verification.
+- Support public removal drafts by catalog ID without reposting the address or source URL. Document a manageable seasonal source-review and correction workflow.
+- Retain the local storage schema, existing formats, GitHub Pages hosting and all v1.5 routing features. No new runtime dependencies, scraped catalogs, photos or claimed operating verifications.
+
 ## 1.5.0 — Correctness, reliability and usability
 
 - Remove the Indianapolis routing boundary. Validate worldwide latitude/longitude ranges, preserve manual pins, and accept coordinate start/finish input. Keep the Indianapolis samples.

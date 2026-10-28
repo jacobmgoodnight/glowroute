@@ -15,7 +15,7 @@
 </head>
 <body>
   <a class="skip-link" href="#planner-heading">Skip to route planner</a>
-  <header class="topbar"><div class="brand"><span class="brand-icon">✳</span><div><b>GlowRoute</b><small>Make every festive mile count</small></div></div><span class="version">V1.5</span></header>
+  <header class="topbar"><div class="brand"><span class="brand-icon">✳</span><div><b>GlowRoute</b><small>Make every festive mile count</small></div></div><span class="version">V1.6</span></header>
   <main class="layout">
     <section class="panel controls" aria-label="Route planner">
       <div class="panel-heading"><div><p class="eyebrow">PLAN YOUR DRIVE</p><h1 id="planner-heading" tabindex="-1">A better route, less backtracking.</h1><p class="subtext">Add displays, set your start and finish, then optimize. Open the drive in Apple Maps or Google Maps when you're ready.</p></div></div>
@@ -41,15 +41,19 @@
           <div class="bulk-actions"><button id="directory-load" type="button" class="secondary">↻ Load latest directory</button><button id="directory-refresh-project" type="button" class="secondary">Review updates for this drive</button></div>
           <div class="field-grid compact"><label class="field">Holiday<select id="directory-season"><option>All</option><option>Halloween</option><option>Christmas</option><option>Other</option></select></label><label class="field">Year<select id="directory-year"><option>All</option><option>2026</option><option>2025</option></select></label></div>
           <label class="field">Find address or display<input id="directory-search" type="search" placeholder="Street, neighborhood, display..."/></label>
+          <label class="field">Sort listings<select id="directory-sort"><option value="locality">City / area</option><option value="year">Newest season first</option><option value="name">Display name</option><option value="reviewed">Most recently reviewed source</option></select></label>
           <div role="status" id="directory-status" class="hint">No directory loaded yet.</div>
+          <div class="bulk-actions"><button id="directory-select-visible" type="button" class="secondary" disabled>Select shown</button><button id="directory-clear-selection" type="button" class="secondary" disabled>Clear all selections</button></div>
+          <p id="directory-summary" class="hint" role="status"></p>
           <div id="directory-list" class="directory-list">Load the public directory to browse available entries.</div>
           <div class="bulk-actions"><button id="directory-review-selected" class="primary" type="button">Review selected listings</button></div>
           <div id="directory-review" class="hidden directory-review"><h3>Review before applying</h3><div id="directory-review-items"></div><div class="bulk-actions"><button id="directory-apply" type="button" class="primary" disabled>Apply reviewed changes</button><button id="directory-cancel" type="button" class="secondary">Cancel</button></div></div>
           <div class="directory-submit"><button id="submission-toggle" class="secondary" type="button">Suggest a public display or correction ↗</button>
             <div id="submission-panel" class="hidden"><p class="hint">Suggestions open a public GitHub issue for moderation. Only share an address that's publicly listed or one you have permission to publish.</p>
               <form id="submission-form" class="project-form">
-                <div class="field-grid compact"><label class="field">Type<select id="submit-type"><option value="suggestion">New display</option><option value="correction">Correction</option></select></label><label class="field">Permission<select id="submit-permission"><option value="public">Public listing suggestion</option><option value="owner">Owner / permitted</option></select></label></div>
-                <label class="field">Display name<input id="submit-name" required maxlength="90" placeholder="Display name"/></label>
+                <div class="field-grid compact"><label class="field">Type<select id="submit-type"><option value="suggestion">New display</option><option value="correction">Correction</option><option value="removal">Request removal</option></select></label><label class="field">Permission<select id="submit-permission"><option value="public">Public listing suggestion</option><option value="owner">Owner / permitted</option></select></label></div>
+                <label class="field">Display name or catalog ID<input id="submit-name" required maxlength="96" placeholder="Display name"/></label>
+                <p class="hint">For removal requests, use the catalog ID shown in a listing's source details. Address and source URL are omitted. Do not put private contact details in this public issue.</p>
                 <label class="field">Public address<input id="submit-address" required maxlength="170" placeholder="123 Main St, Indianapolis, IN"/></label>
                 <div class="field-grid compact"><label class="field">Holiday<select id="submit-holiday"><option>Halloween</option><option>Christmas</option><option>Other</option></select></label><label class="field">Year<input id="submit-year" type="number" min="2000" max="2100" value="2026" required/></label></div>
                 <label class="field">Public source link<input id="submit-source" type="url" required placeholder="https://..."/></label>
@@ -107,6 +111,8 @@
           <button id="import-preview" type="button" class="secondary">Preview addresses</button>
         </div>
         <div id="bulk-preview" class="bulk-preview" aria-live="polite">Your imported addresses will appear here for review.</div>
+        <p id="import-review-summary" class="hint" role="status"></p>
+        <div class="bulk-actions"><button id="import-select-all" type="button" class="secondary" disabled>Select all eligible</button><button id="import-select-none" type="button" class="secondary" disabled>Deselect all</button></div>
         <label class="field">When importing<select id="import-mode"><option value="append">Add new displays and skip duplicates</option><option value="replace">Replace current display list</option></select></label>
         <div class="bulk-actions"><button id="import-confirm" type="button" class="primary" disabled>Add reviewed displays</button><button id="import-cancel" type="button" class="secondary">Close</button></div>
       </section>
