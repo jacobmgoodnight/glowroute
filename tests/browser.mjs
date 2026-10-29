@@ -32,8 +32,8 @@ const fixture=()=>({activeId:'t1',projects:[{id:'t1',name:'Denver example drive'
 const indices=url=>url.split('/driving/')[1].split('?')[0].split(';').map(p=>Math.round((Number(p.split(',')[1])-39.73)*1000));
 const time=(i,j)=>i===j?0:j>i?(j-i)*60:(i-j)*600;
 const distance=(i,j)=>i===j?0:(i===0&&j===4||i===1&&j===5||i>j&&i<5&&j>0)?100:3000;
-async function prepare(browser,viewport,{saved=true,storageFail=false,corrupt=false}={}){
- const context=await browser.newContext({viewport,serviceWorkers:'block'}),page=await context.newPage(),errors=[];
+async function prepare(browser,viewport,{saved=true,storageFail=false,corrupt=false,touch=false}={}){
+ const context=await browser.newContext({viewport,hasTouch:touch,serviceWorkers:'block'}),page=await context.newPage(),errors=[];
  page.on('pageerror',error=>errors.push(error.message));
  const control={fail:false,geometryFail:false,delay:0,calls:[],gpsCalls:0,importDelay:0};
  await context.addInitScript(mapStub);
@@ -105,35 +105,45 @@ try{
   const feedback=page.locator('#drive-feedback'),rating=page.locator('#drive-rating'),notes=page.locator('#drive-notes');
   const project=async()=>page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')).projects[0].state);
   assert.equal(await feedback.getAttribute('data-display-id'),'demo1');assert.match(await page.locator('#drive-feedback-name').innerText(),/Art Museum/);
-  const calls=control.calls.length;await rating.selectOption('5');await page.locator('#drive-favorite').click();await page.locator('#drive-note-details summary').click();
+  const calls=control.calls.length;
+  for(let n=1;n<=5;n++){await rating.locator('label').nth(n-1).click();assert.equal((await project()).displays.find(d=>d.id==='demo1').rating,n);assert.equal(await rating.locator('.filled').count(),n);}
+  await rating.locator('input:checked').focus();await page.keyboard.press('ArrowLeft');assert.equal(await rating.locator('input:checked').inputValue(),'4');await page.keyboard.press('ArrowRight');assert.equal((await project()).displays.find(d=>d.id==='demo1').rating,5);
+  await page.locator('#drive-favorite').click();await page.locator('#drive-note-details summary').click();
   const note='RIDER PRIVATE NOTE <img src=x onerror="window.injected=true">';await notes.fill(note);
   const stored=await project(),first=stored.displays.find(d=>d.id==='demo1');assert.equal(first.rating,5);assert.equal(first.favorite,true);assert.equal(first.visitNotes,note);assert.equal(stored.drive.remainingIds.length,4);assert.equal(control.calls.length,calls);
   assert.equal(await page.locator('#drive-favorite').getAttribute('aria-pressed'),'true');assert.match(await page.locator('#drive-feedback-status').innerText(),/Saved on this device/);
   await page.reload();await page.locator('#drive-resume').click();await page.waitForFunction(()=>!document.querySelector('#drive-visited').disabled);
-  assert.equal(await feedback.getAttribute('data-display-id'),'demo1');assert.equal(await rating.inputValue(),'5');assert.equal(await notes.inputValue(),note);
+  assert.equal(await feedback.getAttribute('data-display-id'),'demo1');assert.equal(await rating.locator('input:checked').inputValue(),'5');assert.equal(await notes.inputValue(),note);
   await page.locator('#drive-full').click();assert.equal(await page.locator('.stop .rating-select').first().inputValue(),'5');assert.match(await page.locator('.stop').first().innerText(),/RIDER PRIVATE NOTE/);
   await page.locator('#share-text').click();assert(!(await page.evaluate(()=>window.__copied)).includes('RIDER PRIVATE NOTE'));
   // Existing list edits must be reflected when returning to the current stop.
-  await page.locator('.stop .rating-select').first().selectOption('4');await page.locator('#drive-full').click();assert.equal(await rating.inputValue(),'4');
+  await page.locator('.stop .rating-select').first().selectOption('4');await page.locator('#drive-full').click();assert.equal(await rating.locator('input:checked').inputValue(),'4');
   await page.locator('#drive-note-details summary').click();await notes.fill('Last keystroke before Visited');control.delay=250;await page.locator('#drive-visited').click();
-  assert(await rating.isDisabled());assert.equal((await project()).displays.find(d=>d.id==='demo1').visitNotes,'Last keystroke before Visited');
-  await page.waitForFunction(()=>!document.querySelector('#drive-visited').disabled);assert.notEqual(await feedback.getAttribute('data-display-id'),'demo1');assert.equal(await rating.inputValue(),'3');assert.equal(await notes.inputValue(),'PRIVATE NOTE');
+  assert(await rating.locator('input').first().isDisabled());assert.equal((await project()).displays.find(d=>d.id==='demo1').visitNotes,'Last keystroke before Visited');
+  await page.waitForFunction(()=>!document.querySelector('#drive-visited').disabled);assert.notEqual(await feedback.getAttribute('data-display-id'),'demo1');assert.equal(await rating.locator('input:checked').inputValue(),'3');assert.equal(await notes.inputValue(),'PRIVATE NOTE');
   assert.equal(await page.locator('#drive-favorite').getAttribute('aria-pressed'),'false');assert.equal(await page.locator('#drive-note-details').getAttribute('open'),null);
-  const nextId=await feedback.getAttribute('data-display-id');await rating.selectOption('2');control.fail=true;await page.locator('#drive-skip').click();await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Could not reroute'));
-  assert.notEqual(await feedback.getAttribute('data-display-id'),nextId);assert.equal((await project()).displays.find(d=>d.id===nextId).rating,2);assert.equal(await rating.inputValue(),'3');
+  const nextId=await feedback.getAttribute('data-display-id');await rating.locator('label').nth(1).click();control.fail=true;await page.locator('#drive-skip').click();await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Could not reroute'));
+  assert.notEqual(await feedback.getAttribute('data-display-id'),nextId);assert.equal((await project()).displays.find(d=>d.id===nextId).rating,2);assert.equal(await rating.locator('input:checked').inputValue(),'3');
   // Personal feedback remains available after a routing-service failure.
   await page.locator('#drive-note-details summary').click();await notes.fill('Available after outage');assert.match(await page.locator('#drive-feedback-status').innerText(),/Saved on this device/);
   await page.locator('#drive-full').click();await page.locator('#share-link').click();assert(!(await page.evaluate(()=>window.__copied)).includes('Available after outage'));await page.locator('#drive-full').click();
   assert.equal(await page.evaluate(()=>window.injected),undefined);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await page.locator('#drive-visited').click();await page.waitForFunction(()=>!document.querySelector('#drive-visited').disabled);await page.locator('#drive-visited').click();await page.waitForFunction(()=>document.querySelector('#drive-current').textContent.includes('All displays completed'));
-  assert(await feedback.isHidden());assert(await rating.isDisabled());await page.locator('#drive-end').click();assert(await feedback.isHidden());assert.deepEqual(errors,[]);await context.close();
+  assert(await feedback.isHidden());assert(await rating.locator('input').first().isDisabled());await page.locator('#drive-end').click();assert(await feedback.isHidden());assert.deepEqual(errors,[]);await context.close();
   pass(`${viewport.width}px: current-stop rating/favorite/notes, immediate save, reload/resume, list sync, visit/skip binding, outage editing and sharing privacy`);
+ }
+ {
+  const {context,page,errors}=await prepare(browser,{width:320,height:844},{touch:true});await optimize(page);await page.locator('#drive-start').click();
+  const stars=page.locator('#drive-rating label');assert.equal(await page.getByRole('radiogroup',{name:'Your rating',exact:true}).count(),1);
+  for(const star of await stars.all()){const box=await star.boundingBox();assert(box.width>=44&&box.height>=44);}
+  await stars.nth(4).tap();assert(await page.getByRole('radio',{name:'5 stars',exact:true}).isChecked());
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);await context.close();pass('320px touch: one-tap five-star vote, labeled radio group, 44px targets and no horizontal overflow');
  }
  {
   const {context,page,errors}=await prepare(browser,{width:390,height:844});await optimize(page);await page.locator('#drive-start').click();
   const original=await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2'));
   await page.evaluate(()=>{Storage.prototype.setItem=function(){throw new DOMException('full','QuotaExceededError');};});
-  await page.locator('#drive-rating').selectOption('5');assert.match(await page.locator('#drive-feedback-status').innerText(),/only in this tab/);assert.match(await page.locator('#storage-status').innerText(),/only in memory/);
+  await page.locator('#drive-rating label').nth(4).click();assert.match(await page.locator('#drive-feedback-status').innerText(),/only in this tab/);assert.match(await page.locator('#storage-status').innerText(),/only in memory/);
   assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),original);assert.deepEqual(errors,[]);await context.close();pass('Live Drive feedback storage failure is explicit, never claims a successful save');
  }
  for(const viewport of [{width:1366,height:900},{width:390,height:844}]){

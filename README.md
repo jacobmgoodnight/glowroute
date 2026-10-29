@@ -49,7 +49,7 @@ GlowRoute works for **your own neighborhood or any area where you have display a
 
 **Desktop layout:** Drag the divider between the planner and map to resize them; your browser remembers the width. Focus the divider and use Left/Right arrows (Shift for larger steps), Home/End for the limits, or Enter to reset. Double-click also resets; Escape cancels a drag. Phones keep the stacked layout.
 
-**During a drive:** A passenger or parked driver can rate and favorite the current display under **Remember this display**, or expand **Private notes**. Notes save as you type, before marking the display Visited or skipping it. Feedback belongs to that display and is retained when resuming an interrupted drive. It stays on this browser/device and is excluded from shared itineraries; it does not sync with another rider's phone. Private backups and JSON stop exports can include these notes. Editing feedback does not rearrange the active route.
+**During a drive:** A passenger or parked driver can tap one of five stars to rate the current display in one step, toggle Favorite under **Remember this display**, or expand **Private notes**. Keyboard users can focus the stars and use arrow keys. Ratings save immediately; notes save as you type, before marking the display Visited or skipping it. Feedback belongs to that display and is retained when resuming an interrupted drive. It stays on this browser/device and is excluded from shared itineraries; it does not sync with another rider's phone. Private backups and JSON stop exports can include these notes. Editing feedback does not rearrange the active route.
 
 ### Bring a list of your own displays
 

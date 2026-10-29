@@ -751,7 +751,13 @@ function updateDriveFeedback(){
  panel.dataset.displayId=item?.id||'';panel.dataset.projectId=activeProjectId;
  if(changed){$('drive-note-details').open=false;$('drive-feedback-status').textContent='';}
  $('drive-feedback-name').textContent=item?`For ${item.name}`:'';
- $('drive-rating').value=String(item?.rating>=1&&item?.rating<=5?item.rating:3);
+ const rating=item?.rating>=1&&item?.rating<=5?Number(item.rating):3;
+ for(const input of $('drive-rating').querySelectorAll('input')){
+  input.checked=Number(input.value)===rating;
+  input.nextElementSibling.textContent=Number(input.value)<=rating?'★':'☆';
+  input.parentElement.classList.toggle('filled',Number(input.value)<=rating);
+ }
+ $('drive-rating-value').textContent=`${rating} / 5`;
  $('drive-favorite').setAttribute('aria-pressed',String(!!item?.favorite));
  $('drive-favorite').textContent=item?.favorite?'♥ Favorited':'♡ Favorite';
  const notes=item?.visitNotes||'';
