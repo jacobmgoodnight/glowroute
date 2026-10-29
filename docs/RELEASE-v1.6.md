@@ -43,6 +43,12 @@ Live Drive Mode includes a compact **Remember this display** section with 1–5 
 
 Validation: 71 Node tests and 29 browser scenario groups on Windows Edge 156, including desktop/mobile checks for immediate saving, reload/resume, full-list synchronization, visit/skip transitions, completed-drive cleanup, unavailable routing, unchanged request counts, literal note text, sharing privacy and storage failure. Genuine desktop/mobile captures with real Leaflet/OSM/OSRM and public Denver landmark examples were visually reviewed. No new dependencies or saved-data migration; physical mobile/Safari checks remain outstanding.
 
+## v1.6.3 follow-up
+
+Live Drive ratings use five directly tappable stars with immediate saving, cumulative filled stars and a numeric score. Native labeled radio controls support keyboard arrows, visible focus and screen readers; each target is at least 44 pixels. Existing numeric ratings and storage formats are preserved.
+
+Validation: 71 Node tests and 30 browser scenario groups passed in Windows Edge 156. The current-stop regressions exercise each star value, keyboard changes, saved values on resume, visit/skip and storage failures. A separate 320-pixel touch context verifies a one-tap vote, target sizes and no horizontal overflow. Genuine desktop/mobile app captures with public landmark examples and real mapping were visually reviewed. Physical device and screen-reader testing remain outstanding.
+
 ## Remaining work
 
 Additional regional feeds require source-specific rights and freshness review. Photos require a sustainable licensing/privacy/bandwidth policy. Physical-device accessibility/navigation checks need the relevant devices. More elaborate overlap/budget algorithms, a hosted moderation system and wider refactoring remain outside this discovery release. See [ROADMAP.md](../ROADMAP.md).

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.3 — One-tap Live Drive ratings
+
+- Replace the Live Drive rating dropdown with five directly tappable stars. A single tap saves the chosen rating; filled stars and a numeric value show the current score.
+- Use labeled native radio controls for keyboard arrows and screen readers, with 44-pixel touch targets and visible focus. Preserve existing ratings, notes, favorites and drive resume behavior.
+
 ## 1.6.2 — Live Drive display feedback
 
 - Rate the current display from 1–5, toggle its favorite status and add private notes directly in Live Drive Mode. Keep navigation and visit/skip actions prominent; expand notes only when needed.
