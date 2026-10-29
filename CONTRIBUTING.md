@@ -34,3 +34,5 @@ This contacts Leaflet CDNs, OSM tile servers and OSRM at low volume using public
 - Run Node and browser tests; include the relevant validation and limitations in a focused pull request. Physical iPhone/Android testing should only be claimed when performed.
 
 For display additions/corrections, follow [directory/CONTRIBUTING.md](directory/CONTRIBUTING.md). Only publicly advertised or authorized residential addresses are eligible, with source attribution and season labels. Do not upload private contact information.
+
+Discovery feed work must follow [feeds/README.md](feeds/README.md): independently verify fetch/storage/redistribution rights, keep original seasons and source IDs, and produce review artifacts rather than deployment commits. A public page, permissive robots file or owner-reported permission is not sufficient. Keep city-only records unlocated and never bulk-geocode feeds. The optional Explorer archive utility reads private browser data; test it using synthetic IndexedDB fixtures and never commit a real personal archive.

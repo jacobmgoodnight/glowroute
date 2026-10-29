@@ -5,15 +5,16 @@ const HOLIDAYS=['Halloween','Christmas','Other'];
 export function cleanYear(value){const n=Number(value);return Number.isInteger(n)&&n>=2000&&n<=2100?n:2026;}
 export function normalizeHoliday(value){return HOLIDAYS.includes(value)?value:'Other';}
 export function snapshotState(state){return {...state,selected:[...(state.selected||[])],displays:(state.displays||[]).map(d=>({...d})),endpoints:{...(state.endpoints||{})},cache:{...(state.cache||{})}};}
-export function makeProject({name='',holiday='Halloween',year=2026,displays=[],selected=[],start='',end='',mode='duration',preset='custom',budgetEnabled=false,budgetMinutes=90,viewMinutes=4,endpoints={},cache={},id=null,sourceYear=null}={}){
+export function makeProject({name='',holiday='Halloween',year=2026,displays=[],selected=[],start='',end='',mode='duration',preset='custom',budgetEnabled=false,budgetMinutes=90,viewMinutes=4,departure='',departureZone='',departureFold='earlier',endpoints={},cache={},id=null,sourceYear=null}={}){
  const season=normalizeHoliday(holiday),yr=cleanYear(year);
- return {id:id||`project-${Date.now()}-${Math.random().toString(36).slice(2,9)}`,name:String(name||`${season} ${yr} Drive`).trim().slice(0,90),holiday:season,year:yr,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),state:snapshotState({displays,selected,start,end,mode,preset,budgetEnabled,budgetMinutes,viewMinutes,endpoints,cache}),sourceYear:sourceYear??null};
+ return {id:id||`project-${Date.now()}-${Math.random().toString(36).slice(2,9)}`,name:String(name||`${season} ${yr} Drive`).trim().slice(0,90),holiday:season,year:yr,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),state:snapshotState({displays,selected,start,end,mode,preset,budgetEnabled,budgetMinutes,viewMinutes,departure,departureZone,departureFold,endpoints,cache}),sourceYear:sourceYear??null};
 }
 export function cloneProject(previous,{year,name,holiday}={}){
  const newYear=cleanYear(year??previous.year),newHoliday=normalizeHoliday(holiday??previous.holiday);
  const cloned=makeProject({...previous.state,year:newYear,holiday:newHoliday,name:name||`${newHoliday} ${newYear} Drive`,sourceYear:previous.year});
  // Require seasonal reconfirmation without discarding separately verified map coordinates.
  cloned.state.displays=cloned.state.displays.map(d=>({...d,needsSeasonCheck:true,seasonCheckedYear:null,visited:false,visitedAt:null,skipped:false}));
+ if(newYear!==previous.year||newHoliday!==previous.holiday)cloned.state.departure='';
  return cloned;
 }
 export function revivePortfolio(raw,legacy,seedState){

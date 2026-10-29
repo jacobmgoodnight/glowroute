@@ -5,6 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {resolve, extname, sep} from 'node:path';
 import {createRequire} from 'node:module';
 import assert from 'node:assert/strict';
+import {EXPLORER_SNAPSHOT_URL} from '../source-paste.mjs';
 const require=createRequire(import.meta.url);
 const {chromium}=require(process.env.GLOWROUTE_PLAYWRIGHT_PATH||'playwright');
 const root=resolve(fileURLToPath(new URL('..',import.meta.url)));
@@ -35,7 +36,7 @@ const distance=(i,j)=>i===j?0:(i===0&&j===4||i===1&&j===5||i>j&&i<5&&j>0)?100:30
 async function prepare(browser,viewport,{saved=true,storageFail=false,corrupt=false,touch=false}={}){
  const context=await browser.newContext({viewport,hasTouch:touch,serviceWorkers:'block'}),page=await context.newPage(),errors=[];
  page.on('pageerror',error=>errors.push(error.message));
- const control={fail:false,geometryFail:false,delay:0,calls:[],gpsCalls:0,importDelay:0};
+ const control={fail:false,geometryFail:false,delay:0,calls:[],gpsCalls:0,importDelay:0,snapshotCalls:0,snapshotFail:false};
  await context.addInitScript(mapStub);
  await context.addInitScript(({saved,storageFail,corrupt,data})=>{
   if(!sessionStorage.getItem('test-initialized')){
@@ -45,6 +46,7 @@ async function prepare(browser,viewport,{saved=true,storageFail=false,corrupt=fa
  },{saved,storageFail,corrupt,data:fixture()});
  await context.route('**/*',async route=>{
   const url=route.request().url();
+  if(url===EXPLORER_SNAPSHOT_URL){control.snapshotCalls++;await route.fulfill(control.snapshotFail?{status:503,body:'Unavailable'}:{json:[{id:'old-christmas',name:'Explorer archive fixture',address:'999 Example Rd, Denver, CO',season:'Christmas',year:2025,lastImported:'2026-10-22',sources:[{name:'Permitted test provider',url:'https://example.org/archive',recordId:'old-christmas'}]},{id:'city',name:'Explorer city fixture',town:'Denver',address:'',season:'Halloween',year:2026,sources:[{name:'Permitted test provider',url:'https://example.org/city',recordId:'city'}]}]});return;}
   if(url==='https://listing.example.test/displays'){if(control.importDelay)await new Promise(r=>setTimeout(r,control.importDelay));await route.fulfill({contentType:'text/plain',body:'Late display — 888 Test St, Portland, OR'}).catch(()=>{});return;}
   if(url.includes('router.project-osrm.org')){
    control.calls.push(url);if(control.delay)await new Promise(r=>setTimeout(r,control.delay));
@@ -66,6 +68,57 @@ function pass(message){checks++;console.log(`PASS ${message}`);}
 const browser=await chromium.launch({headless:true,...(process.env.GLOWROUTE_BROWSER_EXECUTABLE?{executablePath:process.env.GLOWROUTE_BROWSER_EXECUTABLE}:{})});
 console.log(`Browser engine: ${browser.version()}`);
 try{
+ for(const viewport of [{width:1366,height:900},{width:390,height:844}]){
+  const {context,page,control,errors}=await prepare(browser,viewport);
+  await page.locator('#directory-toggle').click();await page.waitForFunction(()=>document.querySelector('#directory-status').textContent.includes('31 catalog entries'));assert.equal(control.snapshotCalls,0);
+  const original=await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2'));await page.locator('#explorer-load').click();await page.waitForFunction(()=>document.querySelector('#explorer-status').textContent.includes('older discoveries loaded'));assert.equal(control.snapshotCalls,1);assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),original);
+  await page.locator('#directory-search').fill('Explorer archive fixture');await page.locator('.directory-row input').check();await page.locator('#directory-review-selected').click();assert(await page.locator('#directory-apply').isDisabled());await page.locator('#directory-review-items input[type=checkbox]').check();page.once('dialog',d=>d.accept());await page.locator('#directory-apply').click();assert.equal(await page.locator('.stop').count(),5);
+  let project=await page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')).projects[0].state);const archive=project.displays.find(d=>d.name==='Explorer archive fixture');assert.equal(archive.sourceYear,2025);assert.equal(archive.needsSeasonCheck,true);assert.equal(project.displays[0].visitNotes,'PRIVATE NOTE');
+  await page.locator('#source-paste-open').click();await page.locator('#source-directories .source-directory').filter({hasText:'Indy with Kids · Christmas'}).getByRole('button',{name:'Paste listings'}).click();
+  await page.locator('#bulk-text').fill('Christmas Lights List for Example County | 2025\nExample Lights\nExample County\nAdd to Route\nFree\nAddress & Details\nAddress\n123 Example Road, Denver, CO\nCost\nFree\nFull details');await page.locator('#import-preview').click();assert.equal(await page.locator('.import-review-row').count(),1);assert.equal(await page.locator('.import-review-row input[aria-label^="Display name"]').inputValue(),'Example Lights');assert.equal(await page.locator('#import-source-year').inputValue(),'2025');await page.locator('#import-confirm').click();assert.equal(await page.locator('.stop').count(),6);
+  project=await page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')).projects[0].state);const pasted=project.displays.find(d=>d.name==='Example Lights');assert.equal(pasted.sourceYear,2025);assert.equal(pasted.sourceHoliday,'Christmas');assert.match(pasted.sourceUrl,/indywithkids/);
+  await page.locator('#bulk-toggle').click();await page.locator('#website-url').fill('https://indywithkids.com/christmas-lights-list-indianapolis-central-indiana/');await page.locator('#import-source-year').fill('2025');await page.locator('#bulk-text').fill('Example Lights — 123 Example Road, Denver, CO\nNew Lights — 124 Example Road, Denver, CO');await page.locator('#import-preview').click();assert.match(await page.locator('#import-review-summary').innerText(),/1 selected · 1 already listed/);await page.locator('#import-confirm').click();assert.equal(await page.locator('.stop').count(),7);
+  control.snapshotFail=true;await page.locator('#explorer-load').click();await page.waitForFunction(()=>document.querySelector('#explorer-status').textContent.includes('Existing data retained'));assert.equal(await page.locator('.stop').count(),7);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);await context.close();pass(`${viewport.width}px: action-only old snapshot, explicit unverified archive import, visible-guide paste, retained source season, weekly duplicate-safe append and snapshot failure recovery`);
+ }
+ {
+  const {context,page,errors}=await prepare(browser,{width:390,height:844});
+  await page.evaluate(async()=>{
+   localStorage.setItem('hde-displays',JSON.stringify([{id:'old-one',name:'Personal display',address:'100 Main St'}]));localStorage.setItem('hde-plan',JSON.stringify({ids:['old-one'],progress:1}));
+   const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('hde-memories',1);r.onupgradeneeded=()=>r.result.createObjectStore('displays');r.onsuccess=()=>resolve(r.result);r.onerror=reject;});
+   const canvas=document.createElement('canvas');canvas.width=1;canvas.height=1;
+   await new Promise((resolve,reject)=>{const tx=db.transaction('displays','readwrite');tx.objectStore('displays').put({rating:5,comments:[{id:'comment',text:'Private memory',date:'2025-12-20'}],photos:[{id:'photo',image:canvas.toDataURL('image/jpeg'),caption:'Private photo'}]},'old-one');tx.oncomplete=resolve;tx.onerror=reject;});db.close();
+  });
+  const before=await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),downloadPromise=page.waitForEvent('download');
+  const result=await page.evaluate(await readFile(resolve(root,'tools/hde-export.js'),'utf8')),download=await downloadPromise,archive=JSON.parse(await readFile(await download.path(),'utf8'));
+  assert.equal(result.photos,1);assert.equal(archive.memories.keys[0],'old-one');assert.equal(archive.memories.values[0].comments[0].date,'2025-12-20');assert.equal(archive.memories.values[0].rating,5);assert.match(archive.memories.values[0].photos[0].image,/^data:image\/jpeg;base64,/);assert.equal(JSON.parse(archive.localStorage['hde-plan']).progress,1);
+  assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),before);assert.equal(await page.evaluate(()=>!!localStorage.getItem('hde-displays')),true);assert.deepEqual(errors,[]);await context.close();pass('read-only Explorer archive utility downloads original tour settings, dated comments, ratings and IndexedDB photo data without deleting either app data');
+ }
+ for(const viewport of [{width:1366,height:900},{width:390,height:844}]){
+  const {context,page,control,errors}=await prepare(browser,viewport);
+  await page.locator('#directory-toggle').click();await page.waitForFunction(()=>document.querySelector('#directory-status').textContent.includes('31 catalog entries'));
+  await page.locator('.nearby-options summary').click();await page.locator('#discovery-radius').selectOption('5');assert.equal(await page.locator('.directory-row').count(),0);assert.match(await page.locator('#directory-summary').innerText(),/Set a search location/);
+  await page.locator('#discovery-gps').click();await page.waitForFunction(()=>document.querySelector('#discovery-location-status').textContent.includes('permission denied'));assert.match(await page.locator('#discovery-location-status').innerText(),/Enter an address/);
+  await page.locator('#discovery-address').fill('39.730000,-104.950000');await page.locator('#discovery-find').click();await page.locator('#directory-sort').selectOption('nearest');assert.equal(await page.locator('.directory-row').count(),4);assert.match(await page.locator('.directory-row').first().innerText(),/approximate geographic distance/);
+  assert.equal(control.calls.length,0);const before=await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2'));
+  await page.locator('#discovery-suggest').click();assert(await page.locator('#directory-review').isVisible());assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),before);
+  page.once('dialog',d=>d.accept());await page.locator('#directory-apply').click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);assert(await page.locator('#results').isVisible());assert.equal(await page.locator('.itinerary-row').count(),4);
+  await page.locator('details[aria-label="Optional visit schedule"] summary').click();await page.locator('#departure').fill('2026-12-20T18:00');await page.locator('#departure-zone').fill('America/Denver');await page.locator('#departure-zone').press('Tab');
+  assert(await page.locator('#schedule-panel').isVisible());assert.equal(await page.locator('#schedule-list li').count(),4);assert.match(await page.locator('#schedule-summary').innerText(),/driving.*viewing.*Finish/);assert.match(await page.locator('#schedule-list').innerText(),/Hours unknown/);
+  await page.locator('#departure').fill('2026-03-08T02:30');await page.locator('#departure').press('Tab');assert.match(await page.locator('#schedule-summary').innerText(),/does not exist/);
+  await page.locator('#departure').fill('2026-12-20T18:00');await page.locator('#departure').press('Tab');await page.locator('.stop-actions summary').first().click();const duration=page.locator('.stop-actions input[type=number]').first(),calls=control.calls.length;await duration.fill('12');await duration.press('Tab');assert(await page.locator('#results').isVisible());
+  assert.match(await page.locator('#schedule-summary').innerText(),/24 min viewing/);assert.equal(control.calls.length,calls);assert.equal((await page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')).projects[0].state.displays[0])).visitNotes,'PRIVATE NOTE');
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);
+  await page.screenshot({path:`test-results/v17-planning-${viewport.width}.png`,fullPage:true});await context.close();pass(`${viewport.width}px: radius/no-location, denied GPS, nearest saved pins, private suggested tour review, road routing, schedule, DST gap and per-stop viewing override`);
+ }
+ {
+  const {context,page,errors}=await prepare(browser,{width:390,height:844});await page.locator('#directory-toggle').click();await page.waitForFunction(()=>document.querySelector('#directory-status').textContent.includes('31 catalog entries'));await page.locator('.nearby-options summary').click();
+  const entries=[{id:'city',name:'City-only discovery',town:'Denver',address:'',season:'Halloween',year:2026,lat:39.73,lng:-104.95,sources:[{name:'Permitted fixture',url:'https://example.org/city',recordId:'city'}]},{id:'archive',name:'Archived fixture',address:'999 Test St, Denver, CO',season:'Christmas',year:2025,sources:[{name:'Permitted fixture',url:'https://example.org/archive',recordId:'archive'}]}];
+  const saved=await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2'));
+  await page.locator('#discovery-snapshot').setInputFiles({name:'review.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(entries))});await page.waitForFunction(()=>document.querySelector('#discovery-snapshot-status').textContent.includes('2 unreviewed'));
+  await page.locator('#directory-search').fill('City-only discovery');assert(await page.locator('.directory-row input').isDisabled());assert.match(await page.locator('.directory-row').innerText(),/City-level only/);
+  await page.locator('#directory-search').fill('Archived fixture');assert.match(await page.locator('.directory-row').innerText(),/Archive/);await page.locator('.directory-row input').check();await page.locator('#directory-review-selected').click();assert(await page.locator('#directory-apply').isDisabled());
+  assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),saved);assert.deepEqual(errors,[]);await context.close();pass('local discovery snapshots preserve city-only privacy and historical seasons without mutating projects');
+ }
  {
   const {context,page,errors}=await prepare(browser,{width:1366,height:900});
   const handle=page.getByRole('separator',{name:'Resize route planner and map'}),planner=page.locator('#planner-panel');
@@ -193,7 +246,7 @@ try{
   pass(`${viewport.width}px: rejected-row diagnostics, stable edited preview across modes, bulk selection and append duplicate safety`);
   await page.locator('#directory-toggle').click();await page.waitForFunction(()=>document.querySelector('#directory-status').textContent.includes('31 catalog entries'));
   await page.locator('#directory-sort').selectOption('year');assert.match(await page.locator('.directory-row').first().innerText(),/2026.*Check operation/);await page.locator('#directory-year').selectOption('2025');assert.match(await page.locator('.directory-row').first().innerText(),/Archive/);assert.match(await page.locator('.directory-row').first().innerText(),/Source reviewed/);
-  await page.locator('#directory-select-visible').click();assert.match(await page.locator('#directory-summary').innerText(),/12 selected/);await page.locator('#directory-year').selectOption('2026');assert.match(await page.locator('#directory-summary').innerText(),/12 outside/);await page.locator('#directory-select-visible').click();assert.match(await page.locator('#directory-summary').innerText(),/31 selected/);await page.locator('#directory-select-visible').click();assert.match(await page.locator('#directory-summary').innerText(),/12 selected/);await page.locator('#directory-clear-selection').click();
+  await page.locator('#directory-select-visible').click();assert.match(await page.locator('#directory-summary').innerText(),/12 selected/);await page.locator('#directory-year').selectOption('2026');assert.match(await page.locator('#directory-summary').innerText(),/12 outside/);const currentListings=await page.locator('.directory-row').count();await page.locator('#directory-select-visible').click();assert.match(await page.locator('#directory-summary').innerText(),new RegExp(`${12+currentListings} selected`));await page.locator('#directory-select-visible').click();assert.match(await page.locator('#directory-summary').innerText(),/12 selected/);await page.locator('#directory-clear-selection').click();
   const firstCheckbox=page.locator('.directory-row input').first();await firstCheckbox.check();assert.equal(await firstCheckbox.getAttribute('id'),await page.evaluate(()=>document.activeElement.id));
   await page.locator('#submission-toggle').click();await page.locator('#submit-address').fill('PRIVATE ADDRESS');await page.locator('#submit-source').fill('https://private.example');await page.locator('#submit-type').selectOption('removal');await page.locator('#submit-name').fill('indy-halloween-01');assert(await page.locator('#submit-address').isDisabled());await page.evaluate(()=>{window.open=url=>{window.__suggestion=url;return null;};});page.once('dialog',dialog=>dialog.accept());await page.locator('#submission-form button[type=submit]').click();const suggestion=new URL(await page.evaluate(()=>window.__suggestion));assert.match(suggestion.searchParams.get('title'),/Removal request/);assert(!suggestion.searchParams.get('body').includes('PRIVATE ADDRESS'));
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
@@ -218,7 +271,7 @@ try{
  }
  {
   const {context,page,errors}=await prepare(browser,{width:390,height:844});
-  await page.locator('.smart-controls summary').click();await page.locator('#budget-enabled').check();await page.locator('#budget-minutes').fill('20');await optimize(page);
+  await page.locator('details[aria-label="Optional time budget"] summary').click();await page.locator('#budget-enabled').check();await page.locator('#budget-minutes').fill('20');await optimize(page);
   assert.match(await page.locator('#route-detail').innerText(),/Time-budget selection/);assert.match(await page.locator('#itinerary').innerText(),/Art Museum/);
   const count=await page.locator('.itinerary-row').count();assert(count>0&&count<4);
   await page.locator('#preset').selectOption('top5');assert.equal(await page.locator('#stop-count').innerText(),'1/4');

@@ -1,5 +1,6 @@
 import {optimize,routeCost} from './optimizer.mjs';
 import {canonicalAddress} from './importer.mjs';
+import {viewingMinutes as stopMinutes} from './display-info.mjs';
 
 /** Keep the requested objective first; geometry comparisons must not change it. */
 export function routeCandidates(matrix, mode='duration', budget=null) {
@@ -44,7 +45,8 @@ export function selectWithinBudget(durations, displays, budgetMinutes, viewingMi
     return best;
   };
   for(const node of mandatory){const {index,cost}=incremental(node,order);if(!Number.isFinite(cost))throw Error('A must-see location has no driveable connection.');order.splice(index,0,node);}
-  const totalSeconds=seq=>routeCost(seq,durations)+seq.length*viewingMinutes*60;
+  const viewing=node=>stopMinutes(displays[node-1],viewingMinutes)*60;
+  const totalSeconds=seq=>routeCost(seq,durations)+seq.reduce((sum,node)=>sum+viewing(node),0);
  // Try the actual fixed-endpoint solver before deciding mandatory stops cannot fit.
  if(order.length){const improved=optimize(subsetMatrix(durations,order));order=improved.order.map(i=>order[i-1]);}
  if(totalSeconds(order)>budgetMinutes*60+1e-6)throw Error(`The modeled trip${mandatory.length?' with your '+mandatory.length+' must-see displays':''} needs ${Math.ceil(totalSeconds(order)/60)} minutes with the current ordering, exceeding this budget. Increase time or remove a must-see.`);
@@ -53,7 +55,7 @@ export function selectWithinBudget(durations, displays, budgetMinutes, viewingMi
     let winner=null;
     for(const node of remaining){
       const choice=incremental(node,order);
-      const incrementalSeconds=choice.cost+viewingMinutes*60;
+      const incrementalSeconds=choice.cost+viewing(node);
       if(!Number.isFinite(incrementalSeconds)||totalSeconds(order)+incrementalSeconds>budgetMinutes*60+1e-6)continue;
       const score=stopValue(displays[node-1])/(Math.max(60,incrementalSeconds));
       if(!winner||score>winner.score)winner={node,...choice,score};
@@ -66,7 +68,7 @@ export function selectWithinBudget(durations, displays, budgetMinutes, viewingMi
   const remapped=subsetMatrix(durations,order);
   const improved=optimize(remapped);
   const arranged=improved.order.map(i=>order[i-1]);
-  const drivingSeconds=routeCost(arranged,durations), viewingSeconds=arranged.length*viewingMinutes*60;
+  const drivingSeconds=routeCost(arranged,durations), viewingSeconds=arranged.reduce((sum,node)=>sum+viewing(node),0);
  return {indices:arranged,drivingSeconds,viewingSeconds,totalSeconds:drivingSeconds+viewingSeconds,limitSeconds:budgetMinutes*60,excluded:n-arranged.length,mandatory:mandatory.length};
 }
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.7.0 — Discover, review and schedule holiday tours
+
+- Make source imports explicit: action-only loading of Explorer's older JSON, source/season-aware visible-listing paste, better Indy card names and rural addresses, and duplicate-safe weekly refresh guidance. Allow explicitly reviewed same-holiday archives in newer private drives without changing their original season or claiming current operation. Keep FrightMaps live fetching inactive.
+
+- Extend the existing directory with this drive's saved pins, action-only GPS/address/map-centered discovery, geographic radius/nearest results, optional display filters and map/list correspondence. Preserve searchable unlocated references without city-center routing or background geocoding.
+- Review suggested nearby tours using reliable matching-season pins, favorites/ratings and selected mandatory stops, then reuse the existing optimizer and time-budget heuristic. Add Finish at start; temporary search/GPS endpoints stay out of saved projects.
+- Add optional zoned departure and arrival/departure/finish timeline, driving/viewing totals, source viewing durations and personal overrides. Handle overnight/DST schedules, qualify unverified hours and preserve unknown/conflicting/old-season status. Viewing overrides affect budgets and update timeline estimates without new route calls.
+- Add optional categories/admission/access/scare/music/FM/parking/accessibility/schedules, multiple source references, stable-ID conflict review, source import freshness and year-specific confirmation dates. Preserve old storage, personal metadata, manual pins and backup/import behavior, including legacy `lng`/source-year imports.
+- Add bounded, rights-gated JSON/CSV discovery imports and weekly/manual read-only artifact workflow. Never commit/publish unreviewed candidates. Both legacy providers and all HTML harvesting remain inactive; no new dependencies or services.
+- Accept legacy Explorer snapshots as local review input, retaining city-only and historical constraints. Add complete read-only Explorer storage/photo archive export and a retirement checklist; no old repository changes or automatic personal-media migration.
+- Expand Node/browser coverage and release-consistent service-worker caching. See [audit, scope and limitations](docs/RELEASE-v1.7.md).
+
 ## 1.6.3 — One-tap Live Drive ratings
 
 - Replace the Live Drive rating dropdown with five directly tappable stars. A single tap saves the chosen rating; filled stars and a numeric value show the current score.
