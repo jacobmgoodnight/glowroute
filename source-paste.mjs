@@ -17,12 +17,15 @@ export function pastedSeason(text){
 const boilerplate=/^(?:Address(?:\s*&\s*Details)?|Full details|Add to Route|Closed for (?:the )?season|Radio|Cost|Dates|Free|Paid|Residential|Commercial|Musical\s*\/\s*Synchronized|From .+|Through .+|Tune to .+|\d+ displays?\.?|.* Tour|Add All and Optimize|Email me this tour)$/i;
 function labelGuideRecords(records,text){
  const lines=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);let previousAddress=-1;
- const normalizedLines=lines.map(canonicalAddress),known=new Set(records.map(r=>canonicalAddress(r.address)));
+ const normalizedLines=lines.map(canonicalAddress),known=new Set(records.map(r=>canonicalAddress(r.address))),explicitAddresses=new Set();
  // Explicit visible Address fields also cover rural roads and street names such as "Pass".
  // They require a locality on the copied line; no city or address is invented.
- for(let i=0;i<lines.length-1;i++)if(/^Address$/i.test(lines[i])&&/^\d{1,6}\s+\S+/.test(lines[i+1])&&lines[i+1].includes(',')&&lines[i+1].length<=220){
-  const address=lines[i+1],key=canonicalAddress(address);if(!known.has(key)){known.add(key);records.push({name:address,address,lat:null,lon:null});}
+ for(let i=0;i<lines.length-1;i++)if(/^Address$/i.test(lines[i])&&/^\d{1,6}\s+\S+/.test(lines[i+1])&&lines[i+1].length<=220){
+  const address=lines[i+1],key=canonicalAddress(address);explicitAddresses.add(key);
+  if(address.includes(',')&&!known.has(key)){known.add(key);records.push({name:address,address,lat:null,lon:null});}
  }
+ // When card Address fields are present, ignore incidental addresses in descriptions/footer.
+ if(explicitAddresses.size){const retained=records.filter(r=>[...explicitAddresses].some(key=>canonicalAddress(r.address)===key||canonicalAddress(r.address).startsWith(key+' ')));records.splice(0,records.length,...retained);}
  const positions=new Map(records.map(r=>{const street=canonicalAddress(r.address.split(',')[0]);return [r,normalizedLines.findIndex(line=>line.includes(street))];}));
  records.sort((a,b)=>positions.get(a)-positions.get(b));
  for(const record of records){

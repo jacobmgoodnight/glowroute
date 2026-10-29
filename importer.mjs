@@ -25,8 +25,8 @@ export function parseDelimited(text,delimiter){
  return rows;
 }
 function normalizedHeading(head){return head.toLowerCase().replace(/[^a-z0-9]+/g,'');}
-function toRecord(name,address,defaultCity,lat=null,lon=null,metadata={}){
- if(!STREET.test(address))return null;
+function toRecord(name,address,defaultCity,lat=null,lon=null,metadata={},explicit=false){
+ if(!STREET.test(address)&&!(explicit&&/^\d{1,6}\s+\S+/.test(address)&&address.includes(',')&&address.length<=220))return null;
  const normalized=normalizeAddress(address,defaultCity);
  const label=clean(name).slice(0,110)||clean(address).slice(0,110);
  const valid=Number.isFinite(lat)&&Math.abs(lat)<=90&&Number.isFinite(lon)&&Math.abs(lon)<=180;
@@ -90,7 +90,7 @@ export function parseImportedStops(raw,{defaultCity='Indianapolis, IN 46219',fil
     if(['Halloween','Christmas','Other'].includes(d.season)&&metadata.sourceHoliday===undefined)metadata.sourceHoliday=d.season;
     if(metadata.sources?.length){metadata.sourceName??=metadata.sources[0].name;metadata.sourceUrl??=metadata.sources[0].url;}
     if(Array.isArray(parsed.selected)&&typeof d.id==='string')metadata.selected=parsed.selected.includes(d.id);
-    const record=toRecord(d.name||d.title,d.address||d.location||'',defaultCity,d.lat,d.lon??d.lng,metadata);
+    const record=toRecord(d.name||d.title,d.address||d.location||'',defaultCity,d.lat,d.lon??d.lng,metadata,true);
     if(!record){report(i+1,'No recognizable street address.',d.address||d.location);return [];}
     if(['Halloween','Christmas','Other'].includes(parsed.project?.holiday)&&Number.isInteger(parsed.project?.year)){record.projectHoliday=parsed.project.holiday;record.projectYear=parsed.project.year;}
     else if(['Halloween','Christmas','Other'].includes(d.season)&&Number.isInteger(d.year)){record.projectHoliday=d.season;record.projectYear=d.year;}

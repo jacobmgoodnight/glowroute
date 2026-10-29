@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parseSourcePaste,pastedSeason,sourceKind} from '../source-paste.mjs';
-import {importedDisplay,importReview} from '../importer.mjs';
+import {importedDisplay,importReview,parseImportedStops} from '../importer.mjs';
 import {applyCatalogToProject} from '../directory.mjs';
 import {makeProject} from '../projects.mjs';
 const url='https://indywithkids.com/christmas-lights-list-indianapolis-central-indiana/';
@@ -45,6 +45,8 @@ test('visible Indy guide paste keeps names and explicit rural/Pass addresses, no
  assert.match(result.records[2].metadata.conflicts[0],/closed/);assert(!JSON.stringify(result.records).includes('editorial description'));
  const imported=importedDisplay(result.records[0],{id:'new',origin:result.origin,projectYear:2026,projectHoliday:'Christmas'}).display;
  assert.equal(imported.sourceYear,2025);assert.equal(imported.sourceHoliday,'Christmas');assert.equal(imported.sourceUrl,url);assert.equal(imported.needsSeasonCheck,true);
+ const roundtrip=parseImportedStops(JSON.stringify({displays:result.records.map((r,i)=>importedDisplay(r,{id:String(i),origin:result.origin}).display)}));assert.equal(roundtrip.records.length,3);assert.equal(roundtrip.records[1].address,'456 N 200 W, Example City, Indiana');
+ const withFooter=parseSourcePaste(copied+'\nPublisher office\n999 Unrelated Street, Other City, IN',{url});assert.equal(withFooter.records.length,3);
 });
 test('manual weekly append skips same addresses and keeps personal records untouched',()=>{
  const first=parseSourcePaste(copied,{url}),existing=first.records.map((r,i)=>({...importedDisplay(r,{id:String(i),origin:first.origin}).display,visitNotes:'PRIVATE',rating:5,approved:true}));
