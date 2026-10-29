@@ -1,5 +1,6 @@
 /** Client-side imports only: no scraping or third-party requests. */
 import {validCoordinates} from './routing.mjs';
+import {displayInfo} from './display-info.mjs';
 const STREET = /\b\d{1,6}\s+(?:(?:N|S|E|W|NE|NW|SE|SW)\.?\s+)?(?:[A-Za-z0-9'’.\-]+\s+){0,7}(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Court|Ct|Way|Circle|Cir|Parkway|Pkwy|Terrace|Ter|Place|Pl)\.?\b/i;
 const STREET_END = /(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Court|Ct|Way|Circle|Cir|Parkway|Pkwy|Terrace|Ter|Place|Pl)\.?$/i;
 const headerTags=['address','street','location','name','display','city','state','zip','postal'];
@@ -11,7 +12,7 @@ function normalizeAddress(value,defaultCity){
  if(STREET_END.test(address)&&clean(defaultCity))address+=', '+clean(defaultCity);
  return address.slice(0,220);
 }
-function parseDelimited(text,delimiter){
+export function parseDelimited(text,delimiter){
  const rows=[];let row=[],cell='',quoted=false;
  for(let i=0;i<text.length;i++){
   const c=text[i];if(c==='"'){
@@ -24,8 +25,8 @@ function parseDelimited(text,delimiter){
  return rows;
 }
 function normalizedHeading(head){return head.toLowerCase().replace(/[^a-z0-9]+/g,'');}
-function toRecord(name,address,defaultCity,lat=null,lon=null,metadata={}){
- if(!STREET.test(address))return null;
+function toRecord(name,address,defaultCity,lat=null,lon=null,metadata={},explicit=false){
+ if(!STREET.test(address)&&!(explicit&&/^\d{1,6}\s+\S+/.test(address)&&address.includes(',')&&address.length<=220))return null;
  const normalized=normalizeAddress(address,defaultCity);
  const label=clean(name).slice(0,110)||clean(address).slice(0,110);
  const valid=Number.isFinite(lat)&&Math.abs(lat)<=90&&Number.isFinite(lon)&&Math.abs(lon)<=180;
@@ -85,10 +86,14 @@ export function parseImportedStops(raw,{defaultCity='Indianapolis, IN 46219',fil
    records=items.flatMap((d,i)=>{
     if(!d||typeof d!=='object'||Array.isArray(d)){report(i+1,'Expected a display object.','');return [];}
     const metadata=importMetadata(d);
+    if(Number.isInteger(d.year)&&d.year>=2000&&d.year<=2100&&metadata.sourceYear===undefined)metadata.sourceYear=d.year;
+    if(['Halloween','Christmas','Other'].includes(d.season)&&metadata.sourceHoliday===undefined)metadata.sourceHoliday=d.season;
+    if(metadata.sources?.length){metadata.sourceName??=metadata.sources[0].name;metadata.sourceUrl??=metadata.sources[0].url;}
     if(Array.isArray(parsed.selected)&&typeof d.id==='string')metadata.selected=parsed.selected.includes(d.id);
-    const record=toRecord(d.name||d.title,d.address||d.location||'',defaultCity,d.lat,d.lon,metadata);
+    const record=toRecord(d.name||d.title,d.address||d.location||'',defaultCity,d.lat,d.lon??d.lng,metadata,true);
     if(!record){report(i+1,'No recognizable street address.',d.address||d.location);return [];}
     if(['Halloween','Christmas','Other'].includes(parsed.project?.holiday)&&Number.isInteger(parsed.project?.year)){record.projectHoliday=parsed.project.holiday;record.projectYear=parsed.project.year;}
+    else if(['Halloween','Christmas','Other'].includes(d.season)&&Number.isInteger(d.year)){record.projectHoliday=d.season;record.projectYear=d.year;}
     return [record];
    });
   }catch(e){return {records:[],duplicates:0,issues:['Could not parse JSON: '+e.message]};}
@@ -111,7 +116,9 @@ export function parseImportedStops(raw,{defaultCity='Indianapolis, IN 46219',fil
 
 /** Explicit allowlist: imported JSON cannot inject IDs, executable links or arbitrary state. */
 export function importMetadata(raw){
- const safe={};if(!raw||typeof raw!=='object')return safe;
+ if(!raw||typeof raw!=='object')return {};
+ const safe=displayInfo(raw);
+ if(['Halloween','Christmas','Other'].includes(raw.sourceHoliday))safe.sourceHoliday=raw.sourceHoliday;
  for(const key of ['favorite','mustSee','visited','skipped','approved','needsSeasonCheck','selected'])if(typeof raw[key]==='boolean')safe[key]=raw[key];
  if(Number.isInteger(raw.rating)&&raw.rating>=1&&raw.rating<=5)safe.rating=raw.rating;
  if(Number.isFinite(raw.score)&&raw.score>=0&&raw.score<=100)safe.score=raw.score;
@@ -143,7 +150,7 @@ export function importedDisplay(record,{id,origin={},projectYear,projectHoliday}
  const coordinates=validCoordinates(record),manual=coordinates&&metadata.geoSource==='manual'&&metadata.approved===true;
  const display={score:3,featured:0,...metadata,id,name:record.name.trim(),address:record.address.trim(),lat:coordinates?record.lat:null,lon:coordinates?record.lon:null,
   geoSource:manual?'manual':coordinates?'imported':null,approved:manual,needsSeasonCheck:!verified,
-  sourceName:metadata.sourceName||origin.name||'User import',sourceUrl:metadata.sourceUrl||origin.url||'',sourceYear:metadata.sourceYear||origin.year||null};
+  sourceName:metadata.sourceName||origin.name||'User import',sourceUrl:metadata.sourceUrl||origin.url||'',sourceYear:metadata.sourceYear||origin.year||null,sourceHoliday:metadata.sourceHoliday||origin.season||null};
  if(!verified)display.seasonCheckedYear=null;
  if(record.projectYear!==undefined&&(record.projectYear!==projectYear||record.projectHoliday!==projectHoliday)){display.visited=false;display.visitedAt=null;display.skipped=false;}
  return {display,selected:selected!==false||!!display.mustSee};

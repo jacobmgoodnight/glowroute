@@ -7,6 +7,11 @@ import {validateDirectory,compareCatalogToProject,applyCatalogToProject,makeSubm
 import {subsetMatrix,selectWithinBudget,roadOverlap,makeSharePayload,encodeShare,decodeShare,routeCandidates} from './tour.mjs';
 import {validCoordinates,coordinateInput,locationPath,fetchJson,validateRoadMatrix,createRoutingClient} from './routing.mjs';
 import {initPanelResize} from './layout.mjs';
+import {informationLines,viewingMinutes,safeSourceUrl,sourceReferences} from './display-info.mjs';
+import {discover,discoveryEntries,suggestCandidates,located} from './discovery.mjs';
+import {validateCandidates,sourceFreshness} from './candidates.mjs';
+import {renderSchedule} from './planner-ui.mjs';
+import {parseSourcePaste,sourceKind,EXPLORER_SNAPSHOT_URL} from './source-paste.mjs';
 
 const $=id=>document.getElementById(id);
 const defaultTop5=['ouija','lady','mcblackton','studio','circus'];
@@ -32,10 +37,11 @@ function save(){
  try{localStorage.setItem(PROJECT_STORE,JSON.stringify(portfolio));$('storage-status').textContent='';return true;}catch(error){console.warn('Storage unavailable; export a backup',error);$('storage-status').textContent='Changes are only in memory: browser storage is unavailable or full. Back up all years before closing this tab.';return false;}
 }
 let directoryData=null,directorySelection=new Set(),directoryPreview=[],directoryBusy=false,directoryPreviewProjectId=null;
+let discoveryCenter=null,discoveryMapMode=false,discoveryRequest=null,discoveryRevision=0,discoverySnapshot=[],suggestion=null,discoveryLayer=null,explorerRequest=null;
 let map,markerLayer,routeLayer,currentRoute=null,lastMatrix=null,currentPoints=null,lastGeoStatus=0,pinTarget=null,pinLatLon=null,busy=false;
 let driveActive=false,driveAnchor=null,driveFinish=null,driveRemainingIds=[],sharedIncoming=null;
 let driveTotal=0,driveAnchorId=null;
-let operation=null,drawRevision=0,gpsStart=null;
+let operation=null,drawRevision=0,gpsStart=null,temporaryFinish=null;
 let controlsProjectId=null;
 const routing=createRoutingClient();
 function cancelOperation(){operation?.abort();operation=null;drawRevision++;busy=false;$('optimize').disabled=false;}
@@ -73,8 +79,9 @@ async function initMap(){
  map=L.map('map',{zoomControl:false}).setView([39.775,-86.101],12);
  L.control.zoom({position:'bottomleft'}).addTo(map);
  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',maxZoom:19}).addTo(map);
- markerLayer=L.layerGroup().addTo(map);routeLayer=L.layerGroup().addTo(map);
+ markerLayer=L.layerGroup().addTo(map);routeLayer=L.layerGroup().addTo(map);discoveryLayer=L.layerGroup().addTo(map);
  map.on('click',event=>{
+   if(discoveryMapMode){discoveryMapMode=false;$('discovery-map').textContent='Choose on map';setDiscoveryCenter({lat:event.latlng.lat,lon:event.latlng.lng},'Chosen map location');return;}
    if(pinTarget===null)return;
    pinLatLon={lat:event.latlng.lat,lon:event.latlng.lng};
    L.circleMarker(event.latlng,{radius:9,color:'#fff',weight:2,fillColor:'#f59e0b',fillOpacity:1}).addTo(markerLayer);
@@ -137,11 +144,16 @@ function renderStops(){
    const visited=document.createElement('button');visited.textContent=item.visited?'Unvisit':'Visited';visited.title='Mark this house visited on this drive';visited.addEventListener('click',()=>{item.visited=!item.visited;item.visitedAt=item.visited?new Date().toISOString():null;save();renderStops();});side.append(visited);
    const notes=document.createElement('button');notes.textContent='Notes';notes.title='Add or edit private driving notes';notes.addEventListener('click',()=>{const answer=prompt(`Private notes for ${item.name} (saved only on this device):`,item.visitNotes||'');if(answer===null)return;item.visitNotes=answer.trim().slice(0,500);save();renderStops();});side.append(notes);
    const pin=document.createElement('button');pin.textContent='Pin';pin.title='Place or correct this stop on the map';pin.addEventListener('click',()=>beginPin(item.id));side.append(pin);
-   if(item.needsSeasonCheck){const verify=document.createElement('button');verify.className='verify-season';verify.title='Mark this display verified for this season';verify.textContent='Verify ✓';verify.addEventListener('click',()=>{if(!confirm(`Have you checked that “${item.name}” is operating for ${currentProject().holiday} ${currentProject().year}?`))return;item.needsSeasonCheck=false;item.seasonCheckedYear=currentProject().year;save();renderStops();status('Season marked verified for this project.','good');});side.append(verify)}
+   if(item.needsSeasonCheck){const verify=document.createElement('button');verify.className='verify-season';verify.title='Mark this display verified for this season';verify.textContent='Verify ✓';verify.addEventListener('click',()=>{if(!confirm(`Have you checked that “${item.name}” is operating for ${currentProject().holiday} ${currentProject().year}?`))return;item.needsSeasonCheck=false;item.seasonCheckedYear=currentProject().year;item.lastConfirmed=new Date().toISOString().slice(0,10);save();renderStops();if(currentRoute)renderRouteSummary();status('Season marked verified for this project.','good');});side.append(verify)}
    const remove=document.createElement('button');remove.textContent='×';remove.title='Remove this stop from this project';remove.setAttribute('aria-label',`Remove ${item.name}`);remove.addEventListener('click',()=>removeStop(item.id));side.append(remove);
    const actions=document.createElement('details');actions.className='stop-actions';const summary=document.createElement('summary');summary.textContent='Details & notes';actions.append(summary,side);
+   const durationLabel=document.createElement('label');durationLabel.className='field';durationLabel.textContent='Viewing minutes (blank uses source/default)';
+   const duration=document.createElement('input');duration.type='number';duration.min='0';duration.max='180';duration.step='1';duration.value=item.viewingOverride??'';duration.placeholder=String(viewingMinutes({...item,viewingOverride:undefined},state.viewMinutes??4));duration.setAttribute('aria-label',`Viewing minutes for ${item.name}`);
+   duration.addEventListener('change',()=>{const n=Number(duration.value);if(duration.value!==''&&(!Number.isFinite(n)||n<0||n>180)){duration.setCustomValidity('Enter 0–180 minutes, or leave blank.');duration.reportValidity();return;}duration.setCustomValidity('');if(duration.value==='')delete item.viewingOverride;else item.viewingOverride=n;save();updateViewingEstimates();status('Viewing time saved; schedule updated. Optimize again to reconsider the budgeted stop selection.');});durationLabel.append(duration);actions.append(durationLabel);
    const publicNotes=[item.catalogDescription,item.catalogOperatingDates&&`Source dates: ${item.catalogOperatingDates}`,item.catalogHours&&`Source hours: ${item.catalogHours}`,item.catalogNotes,item.catalogReviewedAt&&`Source reviewed ${item.catalogReviewedAt}; this is not operating confirmation.`].filter(Boolean);
    if(publicNotes.length){const details=document.createElement('p');details.className='hint public-details';details.textContent=publicNotes.join(' · ');actions.append(details);}
+   for(const text of informationLines(item)){const p=document.createElement('p');p.className='hint';p.textContent=text;actions.append(p);}
+   for(const ref of sourceReferences(item.sources)){const a=document.createElement('a');a.href=ref.url;a.target='_blank';a.rel='noopener noreferrer';a.textContent=`${ref.name} ↗`;actions.append(a);}
    row.append(checkbox,info,actions);container.append(row);
  }
  $('stop-count').textContent=`${getSelected().length}/${state.displays.length}`;
@@ -154,6 +166,7 @@ function removeStop(id){
 }
 function beginPin(id){
  if(!map){status('Map is not available; cannot set a pin.','error');return;}
+ discoveryMapMode=false;discoveryRevision++;discoveryRequest?.abort();$('discovery-map').textContent='Choose on map';
  pinTarget=id;pinLatLon=null;
  const item=state.displays.find(d=>d.id===id);
  $('pin-info').textContent=`${item.name} · ${item.address}. Tap the correct location on the map.`;
@@ -164,7 +177,7 @@ function beginPin(id){
  const toolbar=document.createElement('div');toolbar.id='pin-toolbar';toolbar.style.cssText='position:fixed;bottom:20px;left:20px;z-index:9999;display:flex;gap:8px;background:#121827;padding:9px;border-radius:12px;border:1px solid #f59e0b';
  const ok=document.createElement('button');ok.className='primary';ok.textContent='Done';ok.addEventListener('click',()=>{
    if(!pinLatLon){status('Tap the map first, then press Done.','error');return;}
-   item.lat=pinLatLon.lat;item.lon=pinLatLon.lon;item.approved=true;item.geoSource='manual';
+   item.lat=pinLatLon.lat;item.lon=pinLatLon.lon;item.approved=true;item.geoSource='manual';item.locationPrecision='street';item.ambiguous=false;
    delete state.cache[item.address.toLowerCase()];save();endPin();invalidate();renderStops();status(`${item.name} location saved on this device.`,'good');
  });
  const cancel=document.createElement('button');cancel.className='secondary';cancel.textContent='Cancel';cancel.addEventListener('click',endPin);
@@ -201,7 +214,7 @@ async function lookupCensus(address,signal){
  if(!hit?.coordinates)throw Error('No Census match');
  return {lat:Number(hit.coordinates.y),lon:Number(hit.coordinates.x),source:'Census (approximate)',display:hit.matchedAddress};
 }
-async function geocode(address,house=false,signal){
+async function geocode(address,house=false,signal,persist=true){
  signal?.throwIfAborted();
  const coordinates=coordinateInput(address);if(coordinates)return coordinates;
  const key=address.trim().toLowerCase();if(validCoordinates(state.cache[key]))return state.cache[key];
@@ -215,7 +228,7 @@ async function geocode(address,house=false,signal){
    signal?.throwIfAborted();lastGeoStatus=Date.now();result=await lookupNominatim(address,signal);
  }
  signal?.throwIfAborted();if(!validCoordinates(result))throw Error(`Invalid coordinates for ${address}`);
- state.cache[key]=result;save();return result;
+ if(persist){state.cache[key]=result;save();}return result;
 }
 async function resolvePoints(selected,signal){
  const total=selected.length+2;let done=0;
@@ -223,6 +236,7 @@ async function resolvePoints(selected,signal){
  for(const key of ['start','end']){
    signal?.throwIfAborted();
    if(key==='start'&&gpsStart){endpoints.push(gpsStart);done++;continue;}
+   if(key==='end'&&temporaryFinish){endpoints.push(temporaryFinish);done++;continue;}
    const address=state[key].trim();
    if(!address)throw Error(`Enter a ${key} address.`);
    if(state.endpoints[key]?.address!==address){
@@ -234,6 +248,7 @@ async function resolvePoints(selected,signal){
  }
  for(const item of selected){
    signal?.throwIfAborted();
+   if(item.locationPrecision==='city')throw Error(`${item.name} has only a city-level location. Confirm a public street address and pin before routing.`);
    if(!validCoordinates(item)){
      status(`Finding ${item.name} (${++done}/${total})…`,'working');
      const p=await geocode(item.address,true,signal);signal?.throwIfAborted();
@@ -301,7 +316,7 @@ async function fetchRouteGeometry(order,points=currentPoints,signal){
  const arr=[points[0],...order.map(i=>points[i]),points.at(-1)];
  const json=await routing.request(`https://router.project-osrm.org/route/v1/driving/${locationPath(arr)}?overview=full&geometries=geojson&steps=false`,{signal});const found=json.routes?.[0];
  if(!found?.geometry?.coordinates?.length||!Number.isFinite(found.duration)||!Number.isFinite(found.distance)||!found.geometry.coordinates.every(p=>Array.isArray(p)&&validCoordinates({lon:p[0],lat:p[1]})))throw Error('Route drawing geometry is unavailable');
- return {order:order.slice(),duration:found.duration,distance:found.distance,coords:found.geometry.coordinates,overlap:roadOverlap(found.geometry.coordinates)};
+ return {order:order.slice(),duration:found.duration,distance:found.distance,legDurations:found.legs?.map(leg=>leg.duration),coords:found.geometry.coordinates,overlap:roadOverlap(found.geometry.coordinates)};
 }
 async function loadRouteAlternatives(signal){
  if(!currentRoute||currentRoute.approx)return;
@@ -365,6 +380,12 @@ async function swapStops(i,j){
 }
 function renderRouteSummary(){
  showResults(true);renderMetrics();renderRouteChoices();renderNavigation();renderItinerary();updateDrivePanel();updatePins();mapLabel(currentRoute.approx?'Approximate straight-line order only — NOT based on roads':'Ordered using mapped driving roads. Inspect pins before navigating.');
+ renderSchedule(state,currentRoute,currentPoints,lastMatrix,currentProject());
+}
+function updateViewingEstimates(){
+ if(!currentRoute)return;
+ if(currentRoute.budgetPlan)currentRoute.budgetPlan.viewingSeconds=currentRoute.order.reduce((sum,i)=>sum+viewingMinutes(currentPoints[i],Number(state.viewMinutes??4))*60,0);
+ renderRouteSummary();
 }
 async function drawRoute(signal){
  if(!routeLayer||!currentRoute)return;
@@ -380,7 +401,7 @@ async function drawRoute(signal){
    const existing=chosen||currentRoute.geometry;
    const geometry=existing?.order.join(',')===currentRoute.order.join(',')?existing:await fetchRouteGeometry(currentRoute.order,points,signal);
    if(currentRoute!==token||revision!==drawRevision)return;
-   currentRoute.geometry=geometry;renderMetrics();updateDrivePanel();
+   currentRoute.geometry=geometry;renderMetrics();updateDrivePanel();renderSchedule(state,currentRoute,currentPoints,lastMatrix,currentProject());
    const coords=geometry.coords;
    if(!coords?.length)throw Error('Route geometry missing');
    const latLngs=coords.map(([lon,lat])=>[lat,lon]);
@@ -440,9 +461,10 @@ function updateProjectSelect(){
  const p=currentProject();$('project-detail').textContent=`${p.holiday} ${p.year} · ${state.displays.length} saved displays · stored on this device`;
 }
 function syncControls(){
- if(controlsProjectId!==activeProjectId){closeImport();directoryPreview=[];directoryPreviewProjectId=null;$('directory-review').classList.add('hidden');controlsProjectId=activeProjectId;if(directoryData)renderDirectoryList();}
+ if(controlsProjectId!==activeProjectId){closeImport();suggestion=null;temporaryFinish=null;discoveryRevision++;discoveryRequest?.abort();directoryPreview=[];directoryPreviewProjectId=null;$('directory-review').classList.add('hidden');controlsProjectId=activeProjectId;refreshDirectoryYears();if(directoryData)renderDirectoryList();}
  $('start-input').value=state.start;$('end-input').value=state.end;$('mode').value=state.mode;$('preset').value=state.preset;
  $('budget-enabled').checked=!!state.budgetEnabled;$('budget-minutes').value=state.budgetMinutes??90;$('view-minutes').value=state.viewMinutes??4;
+ $('departure').value=state.departure||'';$('departure-zone').value=state.departureZone||Intl.DateTimeFormat().resolvedOptions().timeZone;$('departure-fold').value=state.departureFold||'earlier';
  updateProjectSelect();
  $('use-location').textContent=gpsStart?'Use entered address':'Use my location';
  if(!gpsStart)$('location-status').textContent='Optional starting point for this tab only. Location is requested when you press the button.';
@@ -547,16 +569,18 @@ function updateImportConfirm(){
 }
 function showImportPreview(){
  if(sourceRecords){importSourceData(sourceRecords,importOrigin||{});return;}
- const parsed=parseImportedStops($('bulk-text').value,{defaultCity:$('import-city').value,filename:$('bulk-text').dataset.filename||''});
- importSourceData(parsed.records,{name:$('bulk-text').dataset.sourceName||'Pasted or uploaded listing',url:$('bulk-text').dataset.sourceUrl||'',year:importOrigin?.year||null},false);
+ const parsed=parseSourcePaste($('bulk-text').value,{url:$('website-url').value.trim(),holiday:$('import-source-holiday').value,year:$('import-source-year').value?Number($('import-source-year').value):null,defaultCity:$('import-city').value,filename:$('bulk-text').dataset.filename||''});
+ if(parsed.detected){if(!$('import-source-year').value)$('import-source-year').value=parsed.detected.year;if(!$('import-source-holiday').value)$('import-source-holiday').value=parsed.detected.holiday;}
+ importSourceData(parsed.records,parsed.origin,false);
+ $('paste-source-status').textContent=`${parsed.detected?`Copied heading: ${parsed.detected.holiday} ${parsed.detected.year}. `:''}${parsed.origin.year?`Original season: ${parsed.origin.season||'holiday unknown'} ${parsed.origin.year}. `:'Source year unknown. '}Repeat with Add new to skip duplicates; existing records are not silently updated or removed.`;
  importIssues=parsed.issues;importDiagnostics=parsed.diagnostics||[];importDuplicates=parsed.duplicates;
  renderImportRows();
 }
-function closeImport(){importRevision++;importRequest?.abort();$('website-load').disabled=false;$('bulk-panel').classList.add('hidden');pendingImport=[];importOrigin=null;sourceRecords=null;importPreviewReady=false;importDiagnostics=[];for(const key of ['sourceUrl','sourceName','filename'])delete $('bulk-text').dataset[key];$('import-review-summary').textContent='';$('import-confirm').disabled=true;}
+function closeImport(){importRevision++;importRequest?.abort();$('website-load').disabled=false;$('bulk-panel').classList.add('hidden');pendingImport=[];importOrigin=null;sourceRecords=null;importPreviewReady=false;importDiagnostics=[];for(const key of ['sourceUrl','sourceName','filename'])delete $('bulk-text').dataset[key];$('import-review-summary').textContent='';$('import-confirm').disabled=true;$('website-url').value='';$('import-source-year').value='';$('import-source-holiday').value='';}
 async function loadImportFile(event){
  const file=event.target.files?.[0];if(!file)return;
  const revision=++importRevision,projectId=activeProjectId;importRequest?.abort();$('website-load').disabled=false;
- try{if(file.size>400_000)throw Error('Maximum file size 400 KB.');const text=await file.text();if(revision!==importRevision||projectId!==activeProjectId)return;$('bulk-text').value=text;sourceRecords=null;$('bulk-text').dataset.filename=file.name;delete $('bulk-text').dataset.sourceUrl;delete $('bulk-text').dataset.sourceName;importOrigin=null;
+ try{if(file.size>400_000)throw Error('Maximum file size 400 KB.');const text=await file.text();if(revision!==importRevision||projectId!==activeProjectId)return;$('bulk-text').value=text;sourceRecords=null;$('bulk-text').dataset.filename=file.name;delete $('bulk-text').dataset.sourceUrl;delete $('bulk-text').dataset.sourceName;importOrigin=null;$('website-url').value='';$('import-source-year').value='';$('import-source-holiday').value='';
   $('bulk-panel').classList.remove('hidden');showImportPreview();status(`Reviewing ${file.name}.`,'good');
  }catch(error){status('Import error: '+error.message,'error')}event.target.value='';
 }
@@ -575,6 +599,7 @@ async function loadWebsite(){
   $('website-note').textContent=`Loaded ${catalog.records.length} addresses from an attributed ${catalog.year} catalog snapshot (not a live page fetch). Review before importing.`;
   status(`Loaded reviewed source snapshot: ${catalog.name}.`,'good');return;
  }
+ if(sourceKind(url.href)==='frightmaps'){openSourcePaste(DIRECTORIES.find(s=>s.id==='frightmaps'));$('website-note').textContent='Live FrightMaps fetching is inactive. Use its visible public/permitted street addresses or load the older Explorer discovery snapshot. City-only records cannot route.';return;}
  $('website-note').textContent='Trying direct browser access. Many directory websites block it for security.';
  $('website-load').disabled=true;
  const timer=setTimeout(()=>controller.abort(),9500);
@@ -586,7 +611,7 @@ async function loadWebsite(){
   if(!current())return;
   sourceRecords=null;$('bulk-text').value=type.includes('html')?htmlToText(text):text;
   $('bulk-text').dataset.sourceUrl=url.href;$('bulk-text').dataset.sourceName=url.hostname;delete $('bulk-text').dataset.filename;
-  importOrigin={name:url.hostname,url:url.href,year:null};
+ importOrigin={name:url.hostname,url:url.href,year:null};
   showImportPreview();$('website-note').textContent='Direct page access succeeded. Inspect all addresses before adding.';status('Page retrieved. Check the import preview.','good');
  }catch(error){
   if(!current())return;
@@ -604,14 +629,86 @@ function commitImport(){
  else{state.displays.push(...incoming);state.selected=new Set([...state.selected,...selected]);}
  state.preset='custom';$('preset').value='custom';save();invalidate();renderStops();updateProjectSelect();closeImport();status(`Added ${incoming.length} reviewed displays to “${currentProject().name}”. Check their locations and current-year activity.`,'good');
 }
+function openSourcePaste(source=null){
+ importRevision++;importRequest?.abort();sourceRecords=null;importPreviewReady=false;$('website-load').disabled=false;$('import-confirm').disabled=true;$('bulk-panel').classList.remove('hidden');
+ if(source){$('website-url').value=source.url;$('import-source-holiday').value=source.season;$('import-source-year').value='';$('bulk-text').value='';delete $('bulk-text').dataset.filename;pendingImport=[];$('bulk-preview').textContent='Paste the visible listings, then Preview addresses.';}
+ $('paste-source-status').textContent=source?.id==='frightmaps'?'FrightMaps often shows only a city. Copy an explicitly published/permitted street address from an individual listing; do not infer one from a display name.':`Open the source link above, copy its visible listings and dated heading, then paste below. ${source?.id==='indy-christmas'?'The inspected Christmas guide is labeled 2025; keep that year unless the page itself changes.':''}`;
+ $('bulk-panel').scrollIntoView({block:'start',behavior:'smooth'});$('bulk-text').focus({preventScroll:true});
+}
 function renderDirectories(){const list=$('source-directories');list.replaceChildren();for(const source of DIRECTORIES){
  const row=document.createElement('div');row.className='source-directory';const link=document.createElement('a');link.href=source.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=source.name+' ↗';
- const button=document.createElement('button');button.type='button';button.className='mini-button';button.textContent=source.id.startsWith('indy')?'Review snapshot':'Use URL';button.addEventListener('click',()=>{$('website-url').value=source.url;loadWebsite();});
+ const button=document.createElement('button');button.type='button';button.className='mini-button';button.textContent='Paste listings';button.addEventListener('click',()=>openSourcePaste(source));
  row.append(link,button);list.append(row);
  }}
 
 /* v1.3: public JSON directory, with preview and explicit approval for every change. */
 function directoryStatus(message){$('directory-status').textContent=message;}
+function allDiscoveryEntries(){return discoveryEntries([...(directoryData?.entries||[]),...discoverySnapshot],state.displays,currentProject());}
+function discoveryFilters(){return {center:discoveryCenter,radius:Number($('discovery-radius').value),type:$('discovery-type').value,cost:$('discovery-cost').value,access:$('discovery-access').value,family:$('discovery-family').checked,music:$('discovery-music').checked,sort:$('directory-sort').value};}
+function setDiscoveryCenter(point,label){
+ discoveryRevision++;discoveryRequest?.abort();discoveryCenter=point;discoveryMapMode=false;$('discovery-map').textContent='Choose on map';
+ $('discovery-location-status').textContent=point?`${label} · ${point.lat.toFixed(4)}, ${point.lon.toFixed(4)} · distances are approximate geographic miles, not road miles.`:'No search location. Enter an address, choose a map point, or request GPS.';
+ renderDirectoryList();if(point&&map)map.flyTo([point.lat,point.lon],12);
+}
+async function locateDiscovery(gps=false){
+ const revision=++discoveryRevision;discoveryRequest?.abort();const token=new AbortController();discoveryRequest=token;
+ $('discovery-location-status').textContent=gps?'Requesting a one-time location…':'Finding your search location…';
+ try{
+  let point;
+  if(gps){if(!navigator.geolocation)throw Error('Location unavailable');const p=await new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(resolve,reject,{timeout:9000,maximumAge:30000,enableHighAccuracy:false}));point={lat:p.coords.latitude,lon:p.coords.longitude};}
+  else{const address=$('discovery-address').value.trim();if(!address)throw Error('Enter an address or coordinates');point=await geocode(address,false,token.signal,false);}
+  token.signal.throwIfAborted();if(revision!==discoveryRevision)return;if(!validCoordinates(point))throw Error('Invalid search location');
+  setDiscoveryCenter(point,gps?'Current location (this tab only)':point.ambiguous?'Approximate address match — check map':'Search location');
+ }catch(e){if(revision===discoveryRevision&&!token.signal.aborted)$('discovery-location-status').textContent=gps?'Location unavailable or permission denied. Enter an address or choose a point on the map.':`Search location unavailable: ${e.message}. Try a complete address or coordinates.`;}
+}
+function renderDiscoveryPins(entries){
+ if(!discoveryLayer)return;discoveryLayer.clearLayers();
+ if($('directory-panel').classList.contains('hidden'))return;
+ for(const e of entries.filter(located)){
+  const text=document.createElement('div'),name=document.createElement('strong'),address=document.createElement('p'),button=document.createElement('button');name.textContent=e.name;address.textContent=e.address;button.type='button';button.textContent=directorySelection.has(e.id)?'Selected · show listing':'Show listing';button.addEventListener('click',()=>{const row=document.getElementById(`directory-select-${e.id}`);row?.scrollIntoView({block:'center',behavior:'smooth'});row?.focus();});text.append(name,address,button);
+  L.marker([e.lat,e.lon],{icon:icon(null,'stop',!directorySelection.has(e.id))}).bindPopup(text).addTo(discoveryLayer);
+ }
+ if(discoveryCenter)L.circleMarker([discoveryCenter.lat,discoveryCenter.lon],{radius:8,color:'#60a5fa'}).addTo(discoveryLayer);
+}
+async function loadDiscoverySnapshot(event){
+ const file=event.target.files?.[0];if(!file)return;
+ try{if(file.size>2*1024*1024)throw Error('Maximum snapshot size is 2 MB');const data=validateCandidates(JSON.parse(await file.text()));
+  discoverySnapshot=data.entries;directorySelection.clear();suggestion=null;directoryPreview=[];$('directory-review').classList.add('hidden');
+  $('discovery-snapshot-status').textContent=`${data.entries.length} unreviewed discoveries · ${data.duplicates} exact-address matches grouped · ${sourceFreshness(data.fetchedAt)}. City-only locations cannot route. Existing personal records are unchanged.`;
+  refreshDirectoryYears();renderDirectoryList();
+ }catch(e){$('discovery-snapshot-status').textContent=`Snapshot not loaded: ${e.message}. Previous data retained.`;}finally{event.target.value='';}
+}
+async function loadExplorerSnapshot(){
+ if(explorerRequest)return;const token=new AbortController();explorerRequest=token;$('explorer-load').disabled=true;
+ $('explorer-status').textContent='Loading the older Explorer JSON from your GitHub repository… No live source pages are fetched.';
+ const timer=setTimeout(()=>token.abort(),12000);
+ try{
+  const response=await fetch(EXPLORER_SNAPSHOT_URL,{credentials:'omit',redirect:'error',cache:'no-store',signal:token.signal});
+  if(!response.ok||!response.body)throw Error('Snapshot unavailable');
+  const reader=response.body.getReader(),decoder=new TextDecoder();let text='',bytes=0;
+  try{while(true){const {value,done}=await reader.read();if(done)break;bytes+=value.byteLength;if(bytes>2*1024*1024)throw Error('Snapshot exceeds 2 MB');text+=decoder.decode(value,{stream:true});}text+=decoder.decode();}finally{await reader.cancel();}
+  const data=validateCandidates(JSON.parse(text));discoverySnapshot=data.entries;directorySelection.clear();suggestion=null;directoryPreview=[];$('directory-review').classList.add('hidden');
+  refreshDirectoryYears();renderDirectoryList();
+  const unlocated=data.entries.filter(e=>!e.address).length;
+  $('explorer-status').textContent=`${data.entries.length} older discoveries loaded for local review; ${unlocated} lack a routable street address. Select the original holiday/year to browse. No records were added to a drive and no live pages were refreshed.`;
+  $('discovery-snapshot-status').textContent='Loaded the older Explorer snapshot from GitHub. Per-listing dates below describe its original imports, not a fresh operating check.';
+ }catch(e){$('explorer-status').textContent=`Could not load the older snapshot (${token.signal.aborted?'request timed out':e.message}). Existing data retained. Download source-candidates.json from the old repository and use Load review snapshot instead.`;}
+ finally{clearTimeout(timer);explorerRequest=null;$('explorer-load').disabled=false;}
+}
+function refreshDirectoryYears(){
+ const select=$('directory-year'),previous=select.value;select.replaceChildren(new Option('All','All'));
+ for(const year of [...new Set(allDiscoveryEntries().map(e=>e.year))].sort((a,b)=>b-a))select.append(new Option(String(year),String(year)));
+ if([...select.options].some(o=>o.value===previous))select.value=previous;
+}
+function suggestDiscoveryTour(){
+ try{
+  if(!discoveryCenter)throw Error('Set a search location first.');
+  const project=currentProject(),all=allDiscoveryEntries(),mandatory=all.filter(e=>e.projectDisplayId&&state.selected.has(e.projectDisplayId)&&e.mustSee);
+  const entries=suggestCandidates(visibleDirectoryEntries(),mandatory,{holiday:project.holiday,year:project.year});
+  directorySelection=new Set(entries.map(e=>e.id));suggestion={projectId:activeProjectId,center:{...discoveryCenter},entries};
+  prepareDirectoryReview('suggestion');renderDirectoryList();$('directory-review').scrollIntoView({block:'nearest'});
+ }catch(e){directoryStatus(e.message);}
+}
 async function fetchDirectory(){
  if(directoryBusy)return;directoryBusy=true;$('directory-load').disabled=true;
  directoryStatus('Fetching the public directory…');
@@ -620,56 +717,61 @@ async function fetchDirectory(){
   if(!response.ok)throw Error(`Directory returned ${response.status}`);
   const raw=await response.json();directoryData=validateDirectory(raw);
   directorySelection.clear();directoryPreview=[];
-  const yearSelect=$('directory-year'),previousYear=yearSelect.value;yearSelect.replaceChildren(new Option('All','All'));
-  for(const year of [...new Set(directoryData.entries.map(e=>e.year))].sort((a,b)=>b-a))yearSelect.append(new Option(String(year),String(year)));
-  if([...yearSelect.options].some(o=>o.value===previousYear))yearSelect.value=previousYear;
+  suggestion=null;refreshDirectoryYears();
   renderDirectoryList();
   directoryStatus(`${response.headers?.get('X-GlowRoute-Cached')?'Offline cached copy · ':''}${directoryData.entries.length} catalog entries loaded · last updated ${directoryData.updatedAt}. Public listings do not guarantee a display is operating.`);
  }catch(error){directoryStatus(`Directory unavailable: ${error.message}. Saved drives still work offline.`);console.warn(error)}
  finally{directoryBusy=false;$('directory-load').disabled=false;}
 }
 function renderDirectoryList(){
- const el=$('directory-list');el.replaceChildren();if(!directoryData){el.textContent='Select Load directory to browse the maintained address list.';return;}
+ const el=$('directory-list');el.replaceChildren();
  const matches=visibleDirectoryEntries();
  if(!matches.length){const empty=document.createElement('p');empty.className='hint';empty.textContent='No listings match these filters. Try another city, holiday or year. Your other selections are retained.';el.append(empty);}
  for(const entry of matches){
   const row=document.createElement('div');row.className='directory-row';
   const cb=document.createElement('input');cb.type='checkbox';cb.checked=directorySelection.has(entry.id);cb.setAttribute('aria-label',`Select ${entry.name}`);
-  cb.id=`directory-select-${entry.id}`;cb.addEventListener('change',()=>{if(cb.checked)directorySelection.add(entry.id);else directorySelection.delete(entry.id);updateDirectorySelection()});
+  cb.disabled=!entry.address;cb.id=`directory-select-${entry.id}`;cb.addEventListener('change',()=>{if(cb.checked)directorySelection.add(entry.id);else directorySelection.delete(entry.id);updateDirectorySelection();renderDiscoveryPins(matches)});
   const info=document.createElement('div');info.className='directory-item';
   const title=document.createElement('label');title.htmlFor=cb.id;title.className='directory-title';title.textContent=entry.name;
-  const sub=document.createElement('span');sub.textContent=entry.address;
-  const season=directorySeason(entry),badge=document.createElement('span');badge.className=`directory-season ${season.kind}`;badge.textContent=season.label;
+  const sub=document.createElement('span');sub.textContent=entry.address||`${entry.locality} · City-level only — confirm location at source`;
+  const season=directorySeason(entry.sourceYear?{...entry,year:entry.sourceYear,holiday:entry.sourceHoliday||entry.holiday}:entry),badge=document.createElement('span');badge.className=`directory-season ${season.kind}`;badge.textContent=season.label;
   const reviewed=document.createElement('span');reviewed.textContent=entry.reviewedAt?`Source reviewed ${entry.reviewedAt} · not an operating check`:'Source review date not supplied';
-  const source=document.createElement('a');source.href=entry.sourceUrl;source.target='_blank';source.rel='noopener noreferrer';source.textContent=`Source: ${entry.sourceName} ↗`;source.addEventListener('click',e=>e.stopPropagation());
+  const source=document.createElement(entry.sourceUrl?'a':'span');if(safeSourceUrl(entry.sourceUrl))source.href=safeSourceUrl(entry.sourceUrl);source.target='_blank';source.rel='noopener noreferrer';source.textContent=`Source: ${entry.sourceName}${entry.sourceUrl?' ↗':''}`;source.addEventListener('click',e=>e.stopPropagation());
   info.append(title,sub,badge,reviewed,source);
+  const distance=document.createElement('span');distance.textContent=entry.distanceMiles!==null&&entry.distanceMiles!==undefined?`${entry.distanceMiles.toFixed(1)} mi · approximate geographic distance`:'Distance unavailable · reliable pin or search location needed';info.append(distance);
+  if(entry.unreviewed){const warning=document.createElement('span');warning.textContent=`Unreviewed discovery · ${sourceFreshness(entry.lastImported)}`;info.append(warning);}
+  if(located(entry)){const show=document.createElement('button');show.className='text-button';show.type='button';show.textContent='Show on map';show.addEventListener('click',()=>{map?.flyTo([entry.lat,entry.lon],16);$('map').scrollIntoView({block:'center',behavior:'smooth'});});info.append(show);}
   if(state.displays.some(d=>d.catalogId===entry.id||canonicalAddress(d.address)===canonicalAddress(entry.address))){const existing=document.createElement('span');existing.textContent='Already in this drive';existing.className='directory-existing';info.append(existing);}
   const details=document.createElement('details'),summary=document.createElement('summary');summary.textContent='Source notes & details';details.append(summary);
   for(const text of [season.detail,entry.description,entry.operatingDates&&`Source dates: ${entry.operatingDates}`,entry.hours&&`Source hours: ${entry.hours}`,entry.notes,`Catalog ID: ${entry.id}`].filter(Boolean)){const p=document.createElement('p');p.textContent=text;details.append(p);}
   info.append(details);row.append(cb,info);el.append(row);
+  for(const text of informationLines(entry)){const p=document.createElement('p');p.textContent=text;details.append(p);}
+  for(const ref of sourceReferences(entry.sources)){const a=document.createElement('a');a.href=ref.url;a.target='_blank';a.rel='noopener noreferrer';a.textContent=`${ref.name} ↗`;details.append(a);}
  }
- updateDirectorySelection();
+ updateDirectorySelection();renderDiscoveryPins(matches);
 }
-function visibleDirectoryEntries(){return directoryData?directoryMatches(directoryData.entries,{query:$('directory-search').value,holiday:$('directory-season').value,year:$('directory-year').value,sort:$('directory-sort').value}):[];}
+function visibleDirectoryEntries(){return discover(directoryMatches(allDiscoveryEntries(),{query:$('directory-search').value,holiday:$('directory-season').value,year:$('directory-year').value,sort:$('directory-sort').value}),discoveryFilters());}
 function updateDirectorySelection(){
  const shown=visibleDirectoryEntries(),count=shown.filter(e=>directorySelection.has(e.id)).length;
- $('directory-summary').textContent=`Showing ${shown.length} of ${directoryData?.entries.length||0} listings · ${directorySelection.size} selected (${directorySelection.size-count} outside these filters). Past years are archives; current-year listings still need an operating check.`;
+ $('directory-summary').textContent=`Showing ${shown.length} of ${allDiscoveryEntries().length} listings · ${directorySelection.size} selected (${directorySelection.size-count} outside these filters). ${Number($('discovery-radius').value)&&!discoveryCenter?'Set a search location to use the radius. ':''}${Number($('discovery-radius').value)?'Unlocated listings are excluded from radius results. ':''}Past years are archives; current-year listings still need an operating check.`;
  $('directory-select-visible').disabled=!shown.length;$('directory-clear-selection').disabled=!directorySelection.size;
  $('directory-select-visible').textContent=shown.length&&count===shown.length?'Deselect shown':'Select shown';
  $('directory-review-selected').textContent=`Review ${directorySelection.size} selected listing${directorySelection.size===1?'':'s'}`;
 }
-function toggleDirectoryShown(){const shown=visibleDirectoryEntries(),remove=shown.every(e=>directorySelection.has(e.id));for(const e of shown){if(remove)directorySelection.delete(e.id);else directorySelection.add(e.id);}renderDirectoryList();}
+function toggleDirectoryShown(){const shown=visibleDirectoryEntries().filter(e=>e.address),remove=shown.every(e=>directorySelection.has(e.id));for(const e of shown){if(remove)directorySelection.delete(e.id);else directorySelection.add(e.id);}renderDirectoryList();}
 function prepareDirectoryReview(mode='selected'){
- if(!directoryData){directoryStatus('Load the directory first.');return;}
+ if(!directoryData&&!state.displays.length&&!discoverySnapshot.length){directoryStatus('Load the directory or import a snapshot first.');return;}
+ if(mode!=='suggestion')suggestion=null;
  const project=currentProject();let entries;
- if(mode==='refresh')entries=directoryData.entries.filter(r=>r.holiday===project.holiday&&r.year===project.year);
- else entries=directoryData.entries.filter(r=>directorySelection.has(r.id));
+ if(mode==='suggestion')entries=suggestion.entries;
+ else if(mode==='refresh')entries=[...(directoryData?.entries||[]),...discoverySnapshot].filter(r=>r.holiday===project.holiday&&r.year===project.year&&r.address&&r.locationPrecision!=='city');
+ else entries=allDiscoveryEntries().filter(r=>directorySelection.has(r.id)&&r.address);
  if(!entries.length){directoryStatus(mode==='refresh'?`No catalog listings for ${project.holiday} ${project.year}; nothing to refresh.`:'Choose at least one display.');return;}
- directoryPreviewProjectId=activeProjectId;directoryPreview=compareCatalogToProject(project,entries).map(p=>({...p,include:mode==='refresh'?(p.kind!=='already'):(p.kind==='new'),replaceDetails:false}));
+ directoryPreviewProjectId=activeProjectId;directoryPreview=compareCatalogToProject(project,entries).map(p=>({...p,include:mode==='suggestion'||(mode==='refresh'?(p.kind!=='already'):(p.kind==='new')),replaceDetails:false}));
  // Manual-selection preview includes older years, but never marks older-year entries as active.
  if(mode==='selected'){ 
   const missing=entries.filter(e=>e.holiday!==project.holiday||e.year!==project.year);
-  for(const e of missing)directoryPreview.push({entry:e,existingId:null,kind:'different-season',include:false});
+  for(const e of missing){const historical=e.holiday===project.holiday&&e.year<project.year;directoryPreview.push({entry:e,existingId:null,kind:historical?'historical':'different-season',allowHistorical:historical,include:false});}
  }
  renderDirectoryReview();$('directory-review').classList.remove('hidden');
  directoryStatus(`Review ${directoryPreview.length} candidates. Nothing changes until you approve.`);
@@ -682,10 +784,13 @@ function renderDirectoryReview(){
   const label=document.createElement('label');label.className='review-select';
   const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.checked=action.include;checkbox.disabled=action.kind==='different-season'||action.kind==='already';
   checkbox.addEventListener('change',()=>{action.include=checkbox.checked;updateDirectoryButton()});
-  const kind=action.kind==='new'?'New':action.kind==='update'?'Update details':action.kind==='already'?'Already matched':'Different holiday/year';
+  const kind=action.kind==='new'?'New':action.kind==='update'?'Update details':action.kind==='already'?'Already matched':action.kind==='historical'?'Archive · add only as unverified':'Different holiday/year';
   label.append(checkbox,document.createTextNode(`${kind} · ${action.entry.name}`));
   const sub=document.createElement('p');sub.className='hint';sub.textContent=`${action.entry.address} · ${action.entry.holiday} ${action.entry.year} · ${action.entry.sourceName}`;
   row.append(label,sub);
+  if(action.kind==='historical'){const p=document.createElement('p');p.className='hint';p.textContent=`Optional: keep this ${action.entry.year} reference in your ${currentProject().year} drive for a seasonal recheck. Its original year stays attached; it is not confirmed operating and cannot seed a suggested tour until rechecked.`;row.append(p);}
+  if(suggestion&&action.entry.mustSee)checkbox.disabled=true;
+  for(const warning of [...(action.warnings||[]),...(action.entry.conflicts||[]),...(action.entry.unreviewed?['Unreviewed source discovery. Adding it here is a private project decision; the public directory is unchanged.']:[])]){const p=document.createElement('p');p.className='hint';p.textContent=warning;row.append(p);}
   if(action.kind==='update'){
    const opt=document.createElement('label');opt.className='copy-check';const ch=document.createElement('input');ch.type='checkbox';ch.checked=action.replaceDetails;
    ch.addEventListener('change',()=>{action.replaceDetails=ch.checked});opt.append(ch,document.createTextNode('Replace display name and address with directory values (otherwise retain your version)'));row.append(opt);
@@ -697,20 +802,29 @@ function renderDirectoryReview(){
 function updateDirectoryButton(){
  const count=directoryPreview.filter(x=>x.include).length;
  $('directory-apply').disabled=directoryPreviewProjectId!==activeProjectId||count===0||!catalogFits(currentProject(),directoryPreview);
- $('directory-apply').textContent=`Apply ${count} reviewed changes`;
+ $('directory-apply').textContent=suggestion?'Apply & plan suggested tour':`Apply ${count} reviewed changes`;
 }
-function applyDirectoryReview(){
+async function applyDirectoryReview(){
  if(directoryPreviewProjectId!==activeProjectId){directoryStatus('The project changed. Review directory changes for this drive again.');return;}
  const selected=directoryPreview.filter(x=>x.include);
  if(!selected.length)return;
  if(!confirm(`Apply ${selected.length} catalog changes to “${currentProject().name}”? Existing stops and private notes will be retained. Back up all years for extra safety.`))return;
  try{
-  save();const next=applyCatalogToProject(currentProject(),selected);
+  const pendingSuggestion=suggestion;
+  save();const next=applyCatalogToProject(currentProject(),selected.filter(a=>!a.entry.saved));
   state.displays=next.displays;state.selected=new Set(next.selected);
+  if(pendingSuggestion){
+   const addresses=new Set(selected.map(a=>canonicalAddress(a.entry.address)));
+   state.selected=new Set(state.displays.filter(d=>addresses.has(canonicalAddress(d.address))||d.mustSee&&state.selected.has(d.id)).map(d=>d.id));
+   const center=pendingSuggestion.center;gpsStart={...center,name:'Tour search location',address:`${center.lat.toFixed(6)},${center.lon.toFixed(6)}`,geoSource:'manual'};
+   temporaryFinish=state.end?null:{...gpsStart,name:'Return to tour start'};
+   $('location-status').textContent='Suggested tour starts at your search point for this tab only. An empty finish returns there.';
+  }
   state.preset='custom';$('preset').value='custom';save();invalidate();renderStops();updateProjectSelect();
-  $('directory-review').classList.add('hidden');directoryPreview=[];
+  $('directory-review').classList.add('hidden');directoryPreview=[];suggestion=null;
   directoryStatus(`${next.added} added · ${next.updated} matched listing updates. Display operation still requires verification.`);
   renderDirectoryList();
+  if(pendingSuggestion)await calculate(false);
  }catch(error){directoryStatus('Directory changes not saved: '+error.message);}
 }
 function submitDirectorySuggestion(event){
@@ -724,7 +838,8 @@ function submitDirectorySuggestion(event){
 }
 
 function setEndpoint(key,value){
- if(key==='start'){gpsStart=null;$('location-status').textContent='';}
+ if(key==='start'){gpsStart=null;temporaryFinish=null;$('location-status').textContent='';}
+ if(key==='end')temporaryFinish=null;
  state[key]=value;delete state.endpoints[key];save();invalidate();
 }
 function updateDrivePanel(){
@@ -787,6 +902,7 @@ function focusDrive(){document.body.classList.add('driving');$('drive-panel').sc
 function beginDrive(){
  if(!currentRoute||currentRoute.approx||busy)return;
  driveActive=true;driveAnchor={...currentPoints[0]};driveFinish={...currentPoints.at(-1)};
+ currentRoute.liveDeparture=Date.now();
  driveRemainingIds=currentRoute.order.map(i=>currentPoints[i].id);driveTotal=driveRemainingIds.length;driveAnchorId=null;saveDrive();
  renderRouteSummary();focusDrive();status('Drive started. Use Live Drive Mode while parked; map directions still run in Apple or Google Maps.','good');
 }
@@ -843,7 +959,7 @@ async function rerouteLive(useGps){
    const newPoints=[anchor,...items,driveFinish];const matrix=await roadMatrix(newPoints,token.signal);token.signal.throwIfAborted();
    const value=state.mode==='distance'?matrix.distances:matrix.durations;
    const answer=optimize(value);
-   driveAnchor=anchor;lastMatrix=matrix;currentPoints=newPoints;currentRoute={...answer,approx:false,variants:[],variantIndex:0};
+   driveAnchor=anchor;lastMatrix=matrix;currentPoints=newPoints;currentRoute={...answer,approx:false,liveDeparture:Date.now(),variants:[],variantIndex:0};
    driveRemainingIds=answer.order.map(i=>newPoints[i].id);
    saveDrive();await loadRouteAlternatives(token.signal);token.signal.throwIfAborted();driveRemainingIds=currentRoute.order.map(i=>currentPoints[i].id);saveDrive();renderRouteSummary();await drawRoute(token.signal);
    status(`Rerouted ${items.length} remaining display(s) from ${useGps?'your current position':'the last confirmed stop'}.`,'good');
@@ -851,7 +967,7 @@ async function rerouteLive(useGps){
  finally{finishOperation(token);}
 }
 async function useStartingLocation(){
- if(gpsStart){gpsStart=null;invalidate();$('location-status').textContent='Using your entered starting address again.';$('use-location').textContent='Use my location';return;}
+ if(gpsStart){gpsStart=null;temporaryFinish=null;invalidate();$('location-status').textContent='Using your entered starting address again.';$('use-location').textContent='Use my location';return;}
  if(!navigator.geolocation){$('location-status').textContent='Location is unavailable. Enter a starting address instead.';return;}
  const typed=$('start-input').value,projectId=activeProjectId;
  const token=beginOperation();$('location-status').textContent='Requesting a one-time position…';
@@ -912,6 +1028,8 @@ function wire(){
  $('welcome-sample').addEventListener('click',()=>{$('welcome').classList.add('hidden');save();$('start-input').focus();});
  $('welcome-own').addEventListener('click',()=>{$('welcome').classList.add('hidden');openProjectEditor(false);$('project-name').focus();});
  $('use-location').addEventListener('click',useStartingLocation);
+ $('round-trip').addEventListener('click',()=>{if(gpsStart){temporaryFinish={...gpsStart,name:'Return to start'};save();invalidate();$('location-status').textContent='Finish returns to your temporary start for this tab only.';}else{setEndpoint('end',$('start-input').value.trim());$('end-input').value=state.end;}});
+ for(const id of ['departure','departure-zone','departure-fold'])$(id).addEventListener('change',()=>{state.departure=$('departure').value;state.departureZone=$('departure-zone').value.trim();state.departureFold=$('departure-fold').value;save();if(currentRoute)renderSchedule(state,currentRoute,currentPoints,lastMatrix,currentProject());});
  $('drive-resume').addEventListener('click',resumeDrive);
  $('drive-retry').addEventListener('click',()=>rerouteLive(false));
  $('drive-full').addEventListener('click',()=>{const focused=document.body.classList.toggle('driving');$('drive-full').textContent=focused?'Show full itinerary':'Focus on next stop';updateDrivePanel();});
@@ -924,7 +1042,7 @@ function wire(){
  $('mode').addEventListener('change',e=>{state.mode=e.target.value;save();invalidate();});
  $('preset').addEventListener('change',e=>preset(e.target.value));
  $('optimize').addEventListener('click',()=>calculate(false));$('estimate').addEventListener('click',()=>calculate(true));
- for(const id of ['budget-enabled','budget-minutes','view-minutes'])$(id).addEventListener('change',()=>{state.budgetEnabled=$('budget-enabled').checked;state.budgetMinutes=Number($('budget-minutes').value);state.viewMinutes=Number($('view-minutes').value);save();invalidate();});
+ for(const id of ['budget-enabled','budget-minutes','view-minutes'])$(id).addEventListener('change',()=>{state.budgetEnabled=$('budget-enabled').checked;state.budgetMinutes=Number($('budget-minutes').value);const viewing=Number($('view-minutes').value);if(!Number.isFinite(viewing)||viewing<0||viewing>60){status('Enter a default viewing time between 0 and 60 minutes.','error');return;}state.viewMinutes=viewing;save();if(id==='view-minutes')updateViewingEstimates();else invalidate();});
  $('drive-start').addEventListener('click',beginDrive);
  $('drive-visited').addEventListener('click',()=>liveAction('visit'));
  $('drive-skip').addEventListener('click',()=>liveAction('skip'));
@@ -962,13 +1080,21 @@ function wire(){
  $('directory-season').addEventListener('change',renderDirectoryList);
  $('directory-year').addEventListener('change',renderDirectoryList);
  $('directory-sort').addEventListener('change',renderDirectoryList);
+ for(const id of ['discovery-radius','discovery-type','discovery-cost','discovery-access','discovery-family','discovery-music'])$(id).addEventListener('change',renderDirectoryList);
+ $('discovery-find').addEventListener('click',()=>locateDiscovery(false));$('discovery-gps').addEventListener('click',()=>locateDiscovery(true));
+ $('discovery-address').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();locateDiscovery(false);}});
+ $('discovery-address').addEventListener('input',()=>{discoveryRevision++;discoveryRequest?.abort();});
+ $('discovery-clear').addEventListener('click',()=>setDiscoveryCenter(null,''));
+ $('discovery-map').addEventListener('click',()=>{if(!map){$('discovery-location-status').textContent='Map is unavailable. Enter an address or coordinates.';return;}discoveryRevision++;discoveryRequest?.abort();discoveryMapMode=!discoveryMapMode;$('discovery-map').textContent=discoveryMapMode?'Cancel map choice':'Choose on map';$('discovery-location-status').textContent=discoveryMapMode?'Tap a point on the map to search nearby.':'Map choice canceled.';if(discoveryMapMode)$('map').scrollIntoView({block:'center',behavior:'smooth'});});
+ $('discovery-snapshot').addEventListener('change',loadDiscoverySnapshot);$('discovery-suggest').addEventListener('click',suggestDiscoveryTour);
+ $('explorer-load').addEventListener('click',loadExplorerSnapshot);$('source-paste-open').addEventListener('click',()=>openSourcePaste());
  $('directory-select-visible').addEventListener('click',toggleDirectoryShown);
  $('directory-clear-selection').addEventListener('click',()=>{directorySelection.clear();renderDirectoryList();});
  $('directory-review-selected').addEventListener('click',()=>prepareDirectoryReview('selected'));
  $('directory-refresh-project').addEventListener('click',()=>prepareDirectoryReview('refresh'));
  $('directory-apply').addEventListener('click',applyDirectoryReview);
- $('directory-cancel').addEventListener('click',()=>{$('directory-review').classList.add('hidden');directoryPreview=[];});
- $('directory-toggle').addEventListener('click',()=>{$('directory-panel').classList.toggle('hidden');if(!directoryData&&!$('directory-panel').classList.contains('hidden'))fetchDirectory();});
+ $('directory-cancel').addEventListener('click',()=>{$('directory-review').classList.add('hidden');directoryPreview=[];suggestion=null;});
+ $('directory-toggle').addEventListener('click',()=>{$('directory-panel').classList.toggle('hidden');if(!directoryData&&!$('directory-panel').classList.contains('hidden'))fetchDirectory();else renderDirectoryList();});
  $('submission-toggle').addEventListener('click',()=>{$('submission-panel').classList.toggle('hidden');});
  $('submission-form').addEventListener('submit',submitDirectorySuggestion);
  $('submit-type').addEventListener('change',()=>{const removal=$('submit-type').value==='removal';for(const id of ['submit-address','submit-source']){$(id).required=!removal;$(id).disabled=removal;} $('submit-name').placeholder=removal?'Catalog ID or display name':'Display name';});
@@ -976,6 +1102,7 @@ function wire(){
  const invalidatePreview=()=>{importRevision++;importRequest?.abort();$('website-load').disabled=false;importPreviewReady=false;$('import-confirm').disabled=true;$('import-review-summary').textContent='The input changed. Preview addresses again before importing.';for(const id of ['import-select-all','import-select-none'])$(id).disabled=true;};
  $('bulk-text').addEventListener('input',()=>{sourceRecords=null;delete $('bulk-text').dataset.filename;invalidatePreview();});
  $('import-city').addEventListener('input',invalidatePreview);
+ for(const id of ['website-url','import-source-year','import-source-holiday'])$(id).addEventListener('input',()=>{sourceRecords=null;invalidatePreview();});
  $('import-mode').addEventListener('change',()=>{if(importPreviewReady)renderImportRows();});
  $('import-select-all').addEventListener('click',()=>{pendingImport.forEach(r=>r.include=true);renderImportRows();});
  $('import-select-none').addEventListener('click',()=>{pendingImport.forEach(r=>r.include=false);renderImportRows();});

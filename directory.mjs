@@ -1,9 +1,13 @@
 /** Portable public directory logic: no external SDK, no account, no automatic overwrites. */
 import {canonicalAddress} from './importer.mjs';
+import {displayInfo,sourceReferences} from './display-info.mjs';
+import {validCoordinates} from './routing.mjs';
 const holidays=new Set(['Halloween','Christmas','Other']);
 const https=value=>{try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password;}catch{return false;}};
 const optionalText=(value,max)=>typeof value==='string'?value.trim().slice(0,max):'';
-const publicFields=e=>({catalogReviewedAt:e.reviewedAt||'',sourceVerification:e.verification||'source-listed',catalogNotes:e.notes||'',catalogDescription:e.description||'',catalogOperatingDates:e.operatingDates||'',catalogHours:e.hours||'',catalogLocality:e.locality||''});
+function sameSource(a,b){return sourceReferences(a.sources).some(x=>x.recordId&&sourceReferences(b.sources).some(y=>y.recordId===x.recordId&&new URL(y.url).origin===new URL(x.url).origin));}
+function matchingDisplay(displays,e){return displays.find(d=>d.catalogId===e.id)||displays.find(d=>e.address&&canonicalAddress(d.address)===canonicalAddress(e.address))||displays.find(d=>sameSource(d,e));}
+const publicFields=e=>{const {viewingOverride,locationPrecision,...facts}=displayInfo(e);return {...facts,catalogReviewedAt:e.reviewedAt||'',sourceVerification:e.verification||'source-listed',catalogNotes:e.notes||'',catalogDescription:e.description||'',catalogOperatingDates:e.operatingDates||'',catalogHours:typeof e.hours==='string'?e.hours:'',catalogLocality:e.locality||''};};
 export function validateDirectory(raw){
  if(!raw||raw.schemaVersion!==1||!Array.isArray(raw.entries)||raw.entries.length>500)throw Error('Unsupported directory format');
  const seen=new Set(),addresses=new Set(),entries=[];
@@ -19,17 +23,20 @@ export function validateDirectory(raw){
   seen.add(id);addresses.add(addressKey);
   entries.push({id,name,address,holiday,year,sourceName:String(item.sourceName||'Public listing').slice(0,90),sourceUrl,
    reviewedAt:optionalText(item.reviewedAt,20),verification:optionalText(item.verification,40)||'source-listed',notes:optionalText(item.notes,300),
-   locality:optionalText(item.locality,100),description:optionalText(item.description,300),operatingDates:optionalText(item.operatingDates,160),hours:optionalText(item.hours,160)});
+   locality:optionalText(item.locality,100),description:optionalText(item.description,300),operatingDates:optionalText(item.operatingDates,160),hours:optionalText(item.hours,160),...displayInfo(item),...(validCoordinates(item)&&item.locationPrecision==='street'?{lat:item.lat,lon:item.lon}:{})});
  }
  return {schemaVersion:1,updatedAt:raw.updatedAt||'',entries};
 }
 export function compareCatalogToProject(project,entries){
  const same=entries.filter(entry=>entry.holiday===project.holiday&&entry.year===project.year);
  return same.map(entry=>{
-  const match=project.state.displays.find(d=>d.catalogId===entry.id)||project.state.displays.find(d=>canonicalAddress(d.address)===canonicalAddress(entry.address));
+  const match=matchingDisplay(project.state.displays,entry);
   if(!match)return {entry,existingId:null,kind:'new'};
-  const different=(match.catalogName??match.name)!==entry.name||canonicalAddress(match.catalogAddress??match.address)!==canonicalAddress(entry.address)||match.sourceUrl!==entry.sourceUrl||match.sourceName!==entry.sourceName||Object.entries(publicFields(entry)).some(([key,value])=>(match[key]||'')!==value);
-  return {entry,existingId:match.id,kind:different?'update':'already'};
+  const different=(match.catalogName??match.name)!==entry.name||canonicalAddress(match.catalogAddress??match.address)!==canonicalAddress(entry.address)||match.sourceUrl!==entry.sourceUrl||match.sourceName!==entry.sourceName||Object.entries(publicFields(entry)).some(([key,value])=>key==='sources'?sourceReferences(value).some(ref=>!sourceReferences(match.sources).some(old=>old.url===ref.url&&old.recordId===ref.recordId)):JSON.stringify(match[key]??'')!==JSON.stringify(value))||(!validCoordinates(match)&&validCoordinates(entry)&&entry.locationPrecision==='street');
+  const warnings=[];
+  if(canonicalAddress(match.address)!==canonicalAddress(entry.address))warnings.push('Source identity matches but the address differs. Retain your address unless independently checked.');
+  if(match.schedule&&entry.schedule&&JSON.stringify(match.schedule)!==JSON.stringify(entry.schedule))warnings.push('Conflicting operating dates/hours. Review both sources.');
+  return {entry,existingId:match.id,kind:different?'update':'already',warnings};
  });
 }
 export function applyCatalogToProject(project,actions,{maxStops=70}={}){
@@ -37,13 +44,14 @@ export function applyCatalogToProject(project,actions,{maxStops=70}={}){
  for(const a of actions){
   if(!a.include)continue;
   const e=a.entry;
-  if(!e)continue;
-  const matchIndex=next.findIndex(d=>d.catalogId===e.id||canonicalAddress(d.address)===canonicalAddress(e.address));
-  const fields={catalogId:e.id,catalogName:e.name,catalogAddress:e.address,sourceName:e.sourceName,sourceUrl:e.sourceUrl,sourceYear:e.year,...publicFields(e),needsSeasonCheck:true};
+  if(!e||e.holiday!==undefined&&e.holiday!==project.holiday||e.year!==undefined&&e.year!==project.year&&!(a.allowHistorical===true&&e.year<project.year)||!e.address||e.locationPrecision==='city')continue;
+  const matched=matchingDisplay(next,e),matchIndex=matched?next.indexOf(matched):-1;
+  const fields={catalogId:e.id,catalogName:e.name,catalogAddress:e.address,sourceName:e.sourceName,sourceUrl:e.sourceUrl,sourceYear:e.year,sourceHoliday:e.holiday,...publicFields(e),needsSeasonCheck:true};
   if(matchIndex>=0){
    const old=next[matchIndex];const addressChanged=!!a.replaceDetails&&canonicalAddress(old.address)!==canonicalAddress(e.address);
-   const seasonStillVerified=!addressChanged&&old.seasonCheckedYear===e.year&&old.needsSeasonCheck===false;
-   const merged={...old,...fields,needsSeasonCheck:!seasonStillVerified,
+   const seasonStillVerified=!addressChanged&&old.seasonCheckedYear===project.year&&old.needsSeasonCheck===false;
+   const suppliedPin=!validCoordinates(old)&&validCoordinates(e)&&e.locationPrecision==='street'&&canonicalAddress(old.address)===canonicalAddress(e.address);
+   const merged={...old,...fields,...(suppliedPin?{lat:e.lat,lon:e.lon,locationPrecision:'street',geoSource:'source snapshot',approved:false}:{}),...(e.sources?{sources:sourceReferences([...sourceReferences(old.sources),...sourceReferences(e.sources)])}:{}),...(a.warnings?.length?{conflicts:[...new Set([...(old.conflicts||[]),...(e.conflicts||[]),...a.warnings])]}:{}),needsSeasonCheck:!seasonStillVerified,
     ...(a.replaceDetails?{name:e.name,address:e.address}:{}),
     ...(addressChanged?{lat:null,lon:null,approved:false,geoSource:null,seasonCheckedYear:null}:{})};
    next[matchIndex]=merged;
@@ -51,7 +59,8 @@ export function applyCatalogToProject(project,actions,{maxStops=70}={}){
   }else{
    if(next.length>=maxStops)throw Error(`Maximum of ${maxStops} displays in one project`);
    const id=`catalog-${e.id}`;
-   next.push({...fields,id,name:e.name,address:e.address,featured:0,score:3,lat:null,lon:null,approved:false,visited:false,visitNotes:''});
+   const hasPin=validCoordinates(e)&&e.locationPrecision==='street';
+   next.push({...fields,id,name:e.name,address:e.address,featured:0,score:3,lat:hasPin?e.lat:null,lon:hasPin?e.lon:null,locationPrecision:hasPin?'street':'unknown',geoSource:hasPin?'source snapshot':null,approved:false,visited:false,visitNotes:''});
    selected.add(id);added++;
   }
  }

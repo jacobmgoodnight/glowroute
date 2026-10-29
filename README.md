@@ -22,6 +22,8 @@ Built for phones and desktops. No account required.
 
 **New in v1.6:** clearer seasonal/source context, directory sorting and filtered bulk selection, import diagnostics and stable review edits, plus personal preferences preserved in stop-list JSON round-trips. Follow-up patches add an adjustable desktop planner/map divider and current-display ratings, favorites and private notes in Live Drive Mode. See the [v1.6 scope and validation](docs/RELEASE-v1.6.md). The screenshots above were captured during v1.5.
 
+**New in v1.7:** nearby discovery from known pins, reviewed tour suggestions, optional departure/arrival schedules, per-display viewing times, richer source facts and filters, and an authorized-feed review pipeline. No new services, accounts or runtime dependencies. See the [code audit and release details](docs/RELEASE-v1.7.md), [feed authorization contract](feeds/README.md), and [Explorer backup/retirement checklist](docs/RETIREMENT.md).
+
 ## ✨ What can GlowRoute do?
 
 | Feature | What it helps you do |
@@ -55,6 +57,8 @@ GlowRoute works for **your own neighborhood or any area where you have display a
 
 Open **Bulk import / paste list** and paste addresses from a public holiday guide or your notes. You can also use a CSV/TSV/TXT file or a GlowRoute JSON export. Review names, addresses and duplicates before adding them; addresses aren't checked as operating displays automatically.
 
+**Indy with Kids / FrightMaps:** Use **Discover displays → Load Explorer's older discoveries** for the larger saved historical file, or **Paste newer website listings** for a fresh manual copy. Review the original source season and choose **Add new displays and skip duplicates** when repeating a paste weekly. FrightMaps city-only references cannot route. The old website button loads small Indy samples, not the full live guide. See the [step-by-step import guide](docs/IMPORTING-LISTINGS.md).
+
 For abbreviated street-only lists, enter the optional city/state. Complete addresses keep their supplied locality. Review ignored-record explanations, use **Select all eligible** or **Deselect all**, and switch between Add/Replace without losing edited rows. Append mode skips existing addresses and preserves their private data. Large lists can be reduced to a subset within the 70-display project limit; preview up to 500 unique addresses at once.
 
 GlowRoute JSON stop exports preserve ratings, favorites, must-see flags, private notes, saved selection, visit state, source details and approved manual pins through import review. Same-holiday/year exports retain seasonal verification; importing into another holiday/year resets verification and visit/skip state. Old exports remain supported but need a seasonal recheck when they lack holiday/year context. These files can contain private data. Use **Backup all years** to restore complete projects, endpoints and settings.
@@ -75,6 +79,22 @@ The initial app includes **25 Irvington, Indianapolis-area Halloween addresses**
 
 The public directory lives in [`directory/catalog.json`](directory/catalog.json). FrightMaps and other external holiday directories may be linked for discovery but are **not** integrated as automatic data feeds.
 
+### Discover nearby and suggest a tour
+
+Open **Discover displays → Browse → Nearby search & filters**. Set a search point using an address/coordinates, explicit GPS request or a map click. Choose a radius and **Nearest known pin**, then narrow the holiday/year or optional category/admission/visit-style/music/family filters. Distances are approximate geographic miles, not road miles. Filtered known pins correspond to the list; **Show on map** and popup **Show listing** connect them.
+
+The list includes this drive's saved displays. The existing public catalog has no supplied coordinates; address-only listings stay searchable, but cannot appear in radius results or seed a suggested tour. Review and manually pin saved stops, or import an authorized snapshot with reliable street-level coordinates. The app does not geocode hundreds of directory records. City-only records remain source references; historical records never become current-year confirmations.
+
+Choose **Suggest a nearby tour** to review up to 20 eligible stops for this drive's holiday/year. Selected **Must see** stops remain mandatory outside filters/radius, or the app explains why their location/season/conflicts need attention. Apply the reviewed suggestion to invoke the same road optimizer and optional time budget used for ordinary drives. Favorites/ratings influence suggestions; remove or reorder stops normally. The search point becomes a temporary start; a blank finish returns there for this tab. **Finish at start** also copies an entered start without retyping it.
+
+**Load review snapshot** opens authorized Action artifacts or older Explorer discovery arrays locally. Import dates, stale snapshots, original seasons, source references, city-only locations and conflicting facts stay visible. Review before adding to your private drive. It never publishes these files or your metadata. The weekly/manual Action produces review artifacts only; both investigated providers are disabled until independent access, storage and redistribution permission exists. See [feeds/README.md](feeds/README.md).
+
+### Plan an optional visit schedule
+
+Expand **Departure & visit schedule**, enter departure and its IANA timezone (defaults to this browser's timezone), and optimize. The itinerary estimates each arrival/departure and finish, plus driving versus viewing totals. It uses mapped road legs when supplied or labels road-matrix estimates. Traffic, parking and delays can change these estimates; rough straight-line routes cannot provide arrival times.
+
+Use the default viewing time under **Time budget & viewing time** or a per-stop override under **Details & notes**. An explicitly supplied display duration takes precedence over the default; your override takes precedence over both. Viewing-time changes update the schedule immediately; re-optimize to reconsider which stops fit the budget. Listed opening windows use the display's own timezone, including overnight hours. Unknown, incomplete, conflicting or old-season schedules stay unknown; unverified source hours are qualified. The app warns about expected closures without dropping stops. It does not solve opening-window optimization. During Live Drive reroutes, remaining estimates start at the reroute time. DST gaps are rejected; repeated departure times offer first/second occurrence.
+
 ## 🔒 Privacy and storage
 
 GlowRoute runs as a static web app—**no accounts, hosted personal profiles or built-in analytics tracker**.
@@ -83,6 +103,7 @@ GlowRoute runs as a static web app—**no accounts, hosted personal profiles or 
 - **Back up all years** to a local JSON file and **Restore backup** to move your projects between browsers or devices. Projects don't automatically sync.
 - Shared itinerary links, copied text and itinerary files include stop names and addresses. **Start and Finish are omitted by default in all three**; add them only if you're comfortable sharing those locations. Stop/project backup exports can include private data—keep those files private.
 - Starting-point GPS and Live Drive rerouting request permission only after your action. Temporary GPS positions aren't saved in projects. Resume stores stop IDs and the last confirmed display, not a location trail.
+- Nearby search points and loaded review snapshots stay in this tab until you explicitly add reviewed public records to a project. Address lookups still transmit the entered query to mapping services. Private Explorer archives include pictures and comments; keep them out of public repositories and sharing links.
 - Map, address lookup and road-routing requests go to third-party mapping services. Entered addresses or coordinates are transmitted to those services as needed.
 - A proposed display submitted as a GitHub issue is **public**, so do not include private contact details or unapproved home addresses.
 
