@@ -1,22 +1,24 @@
-<p align="center"><img src="assets/icon.svg" width="112" alt="GlowRoute app icon: two route points connected by a glowing road with a star" /></p>
+<p align="center"><img src="assets/icon.svg" width="112" alt="Fright & Bright Routes app icon: two route points connected by a glowing road with a star" /></p>
 
-# 🎃🎄 GlowRoute
+# 🎃🎄 Fright & Bright Routes
+
+> **Branding preview:** Previously known as GlowRoute. The repository URL, installed-app storage, saved drives, imports and shared links remain unchanged. The new name is provisional pending final name/trademark review.
 
 **Make every festive mile count.**
 
-GlowRoute is a **free, open-source holiday display route planner** that helps you discover Halloween decorations and Christmas light displays, organize your favorites, and plan a more efficient driving tour—with less backtracking and more time to enjoy the displays.
+Fright & Bright Routes is a **free, open-source holiday display route planner** that helps you discover Halloween decorations and Christmas light displays, organize your favorites, and plan a more efficient driving tour—with less backtracking and more time to enjoy the displays.
 
 Built for phones and desktops. No account required.
 
-![GlowRoute v1.5 desktop route summary and map](docs/screenshots/desktop-route.png)
+![Fright & Bright Routes v1.5 desktop route summary and map](docs/screenshots/desktop-route.png)
 
 *Genuine browser capture with real OSM mapping and OSRM routing. Public Denver landmarks illustrate the workflow; they are not advertised holiday display listings.*
 
-<p align="center"><img src="docs/screenshots/mobile-drive.png" width="300" alt="GlowRoute mobile Live Drive view showing the next public landmark, progress, Maps navigation, visited and skip actions" /></p>
+<p align="center"><img src="docs/screenshots/mobile-drive.png" width="300" alt="Fright & Bright Routes mobile Live Drive view showing the next public landmark, progress, Maps navigation, visited and skip actions" /></p>
 
-**[🚗 Open GlowRoute](https://jacobmgoodnight.github.io/glowroute/)** · [View source](https://github.com/jacobmgoodnight/glowroute) · [Report an issue or suggest a display](https://github.com/jacobmgoodnight/glowroute/issues)
+**[🚗 Open Fright & Bright Routes](https://jacobmgoodnight.github.io/glowroute/)** · [View source](https://github.com/jacobmgoodnight/glowroute) · [Report an issue or suggest a display](https://github.com/jacobmgoodnight/glowroute/issues)
 
-> **Beta:** GlowRoute is an independently maintained route-planning tool, not a live directory of verified operating displays. Check listing dates, locations, hours and navigation before heading out.
+> **Beta:** Fright & Bright Routes is an independently maintained route-planning tool, not a live directory of verified operating displays. Check listing dates, locations, hours and navigation before heading out.
 
 **New in v1.5:** nationwide routing, dependable time/distance selection, cancellable and cached routing requests, a simpler first visit, focused mobile driving with resume, safer backups/sharing and reliable PWA updates. Read the [changelog](CHANGELOG.md), [audit and validation report](docs/AUDIT-v1.5.md), or [prioritized roadmap](ROADMAP.md).
 
@@ -26,7 +28,7 @@ Built for phones and desktops. No account required.
 
 **New in v1.7.1:** edit an optimized drive directly from its numbered map pins: change the visit order, remove a stop from the drive, or correct its pin. See the [workflow review and next priorities](docs/UX-REVIEW-v1.7.1.md).
 
-## ✨ What can GlowRoute do?
+## ✨ What can Fright & Bright Routes do?
 
 | Feature | What it helps you do |
 | --- | --- |
@@ -39,11 +41,11 @@ Built for phones and desktops. No account required.
 | 📲 **Navigate in Maps** | Open your planned itinerary in Apple Maps or Google Maps in manageable legs. |
 | 🔗 **Share and save** | Share a reviewed itinerary, save text directions, and back up or restore projects between devices. |
 
-GlowRoute works for **your own neighborhood or any area where you have display addresses**. The built-in sample data focuses on Indianapolis-area holiday displays; it does not offer comprehensive nationwide discovery.
+Fright & Bright Routes works for **your own neighborhood or any area where you have display addresses**. The built-in sample data focuses on Indianapolis-area holiday displays; it does not offer comprehensive nationwide discovery.
 
 ## 🚀 Start planning in a few steps
 
-1. **Open [GlowRoute](https://jacobmgoodnight.github.io/glowroute/)** on your phone or computer.
+1. **Open [Fright & Bright Routes](https://jacobmgoodnight.github.io/glowroute/)** on your phone or computer.
 2. **Choose _Explore a sample drive_ or _Plan my own drive_.** Existing users go straight to their saved projects. New custom drives start with blank endpoints; add full addresses from any city or browse the **Display directory**.
 3. **Set Start and Finish.** Optionally use **Use my location** for this tab only; your entered starting address is retained. Choose displays, mark important stops **Must see**, and open the optional time budget if needed.
 4. Select **Optimize my route**. Check the route, map pins and suggested order before you go.
@@ -68,13 +70,13 @@ On phones, map editing opens a focused map; **Back to itinerary** returns to the
 
 ### Bring a list of your own displays
 
-Open **Bulk import / paste list** and paste addresses from a public holiday guide or your notes. You can also use a CSV/TSV/TXT file or a GlowRoute JSON export. Review names, addresses and duplicates before adding them; addresses aren't checked as operating displays automatically.
+Open **Bulk import / paste list** and paste addresses from a public holiday guide or your notes. You can also use a CSV/TSV/TXT file or a Fright & Bright Routes JSON export. Review names, addresses and duplicates before adding them; addresses aren't checked as operating displays automatically.
 
 **Indy with Kids / FrightMaps:** Use **Discover displays → Load Explorer's older discoveries** for the larger saved historical file, or **Paste newer website listings** for a fresh manual copy. Review the original source season and choose **Add new displays and skip duplicates** when repeating a paste weekly. FrightMaps city-only references cannot route. The old website button loads small Indy samples, not the full live guide. See the [step-by-step import guide](docs/IMPORTING-LISTINGS.md).
 
 For abbreviated street-only lists, enter the optional city/state. Complete addresses keep their supplied locality. Review ignored-record explanations, use **Select all eligible** or **Deselect all**, and switch between Add/Replace without losing edited rows. Append mode skips existing addresses and preserves their private data. Large lists can be reduced to a subset within the 70-display project limit; preview up to 500 unique addresses at once.
 
-GlowRoute JSON stop exports preserve ratings, favorites, must-see flags, private notes, saved selection, visit state, source details and approved manual pins through import review. Same-holiday/year exports retain seasonal verification; importing into another holiday/year resets verification and visit/skip state. Old exports remain supported but need a seasonal recheck when they lack holiday/year context. These files can contain private data. Use **Backup all years** to restore complete projects, endpoints and settings.
+Fright & Bright Routes JSON stop exports preserve ratings, favorites, must-see flags, private notes, saved selection, visit state, source details and approved manual pins through import review. Same-holiday/year exports retain seasonal verification; importing into another holiday/year resets verification and visit/skip state. Old exports remain supported but need a seasonal recheck when they lack holiday/year context. These files can contain private data. Use **Backup all years** to restore complete projects, endpoints and settings.
 
 **Import from a website** supports selected attributed source snapshots and direct browser-readable pages. It cannot automatically extract arbitrary websites, bypass their access restrictions, or live-sync third-party directories.
 
@@ -110,7 +112,7 @@ Use the default viewing time under **Time budget & viewing time** or a per-stop 
 
 ## 🔒 Privacy and storage
 
-GlowRoute runs as a static web app—**no accounts, hosted personal profiles or built-in analytics tracker**.
+Fright & Bright Routes runs as a static web app—**no accounts, hosted personal profiles or built-in analytics tracker**.
 
 - Your projects, selected stops, ratings, notes and visited history live **in your browser's local storage**, not in a personal cloud account.
 - **Back up all years** to a local JSON file and **Restore backup** to move your projects between browsers or devices. Projects don't automatically sync.
@@ -120,19 +122,19 @@ GlowRoute runs as a static web app—**no accounts, hosted personal profiles or 
 - Map, address lookup and road-routing requests go to third-party mapping services. Entered addresses or coordinates are transmitted to those services as needed.
 - A proposed display submitted as a GitHub issue is **public**, so do not include private contact details or unapproved home addresses.
 
-## 📱 Add GlowRoute to your home screen
+## 📱 Add Fright & Bright Routes to your home screen
 
 **iPhone:** Open the site in Safari, tap **Share**, and choose **Add to Home Screen**.
 
 **Android:** Open the site in Chrome and use the browser menu's **Install app** or **Add to Home screen** option when available.
 
-GlowRoute is a progressive web app (PWA). The interface may be cached, but **maps, geocoding, route optimization and navigation still require internet access**. It is not an offline navigation app.
+Fright & Bright Routes is a progressive web app (PWA). The interface may be cached, but **maps, geocoding, route optimization and navigation still require internet access**. It is not an offline navigation app.
 
 After an application update, use **Save & reload** when prompted. The release shell updates without clearing projects, favorites or geocodes. If storage fails, export a backup before reloading. An offline directory copy is labeled as cached; historical listings are never real-time operating information.
 
 ## 🛠️ Running the project locally
 
-GlowRoute is built with vanilla **HTML, CSS and JavaScript**, Leaflet and OpenStreetMap mapping, and browser local storage. It is designed to run directly on **GitHub Pages**, without a hosted database.
+Fright & Bright Routes is built with vanilla **HTML, CSS and JavaScript**, Leaflet and OpenStreetMap mapping, and browser local storage. It is designed to run directly on **GitHub Pages**, without a hosted database.
 
 Serve the repository over HTTP (rather than double-clicking `index.html`; the app uses JavaScript modules):
 
@@ -160,7 +162,7 @@ In **Settings → Pages**, select **Deploy from a branch**, choose `main` and `/
 <details>
 <summary><strong>Routing, map services and accuracy details</strong></summary>
 
-GlowRoute uses Leaflet with OpenStreetMap tiles, the US Census Geocoder and OpenStreetMap Nominatim for location lookup, and the public OSRM demo service for road-based routing.
+Fright & Bright Routes uses Leaflet with OpenStreetMap tiles, the US Census Geocoder and OpenStreetMap Nominatim for location lookup, and the public OSRM demo service for road-based routing.
 
 - **Up to 12 display stops:** an exact dynamic-programming stop-order solver for the supplied time/distance matrix.
 - **13–68 stops:** an improvement-based heuristic; it isn't guaranteed to find the global optimum.
@@ -190,7 +192,7 @@ Please respect directory source attribution, publishers' terms and residents' pr
 
 ## 📄 License
 
-GlowRoute is released under the [MIT License](LICENSE).
+Fright & Bright Routes is released under the [MIT License](LICENSE).
 
 ---
 
