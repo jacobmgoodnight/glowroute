@@ -12,6 +12,7 @@ import {discover,discoveryEntries,suggestCandidates,located} from './discovery.m
 import {validateCandidates,sourceFreshness} from './candidates.mjs';
 import {renderSchedule} from './planner-ui.mjs';
 import {parseSourcePaste,sourceKind,EXPLORER_SNAPSHOT_URL} from './source-paste.mjs';
+import {editRouteStops,mapPinLocation} from './route-edits.mjs';
 
 const $=id=>document.getElementById(id);
 const defaultTop5=['ouija','lady','mcblackton','studio','circus'];
@@ -43,16 +44,18 @@ let driveActive=false,driveAnchor=null,driveFinish=null,driveRemainingIds=[],sha
 let driveTotal=0,driveAnchorId=null;
 let operation=null,drawRevision=0,gpsStart=null,temporaryFinish=null;
 let controlsProjectId=null;
+let routeEditUndo=null,mapEditSession=0;
+const routePopups=new Map();
 const routing=createRoutingClient();
 function cancelOperation(){operation?.abort();operation=null;drawRevision++;busy=false;$('optimize').disabled=false;}
 function beginOperation(){cancelOperation();operation=new AbortController();busy=true;$('optimize').disabled=true;updateDrivePanel();return operation;}
-function finishOperation(token){if(operation===token){busy=false;operation=null;$('optimize').disabled=false;updateDrivePanel();}}
+function finishOperation(token){if(operation===token){busy=false;operation=null;$('optimize').disabled=false;updateDrivePanel();updatePins();}}
 
 function status(message,tone='') {const el=$('status');el.textContent=message;el.className='status '+tone;}
 function mapLabel(message){$('map-label').textContent=message;}
 function getSelected(){return state.displays.filter(x=>state.selected.has(x.id));}
 function showResults(visible){$('results').classList.toggle('hidden',!visible)}
-function invalidate(){cancelOperation();driveActive=false;driveRemainingIds=[];driveAnchor=null;driveFinish=null;document.body.classList.remove('driving');currentRoute=null;lastMatrix=null;currentPoints=null;updateDrivePanel();routeLayer?.clearLayers();showResults(false);$('estimate').classList.add('hidden');updatePins();}
+function invalidate(){cancelOperation();if(pinTarget!==null)endPin();leaveMapEditing(false);clearRouteUndo();driveActive=false;driveRemainingIds=[];driveAnchor=null;driveFinish=null;document.body.classList.remove('driving');currentRoute=null;lastMatrix=null;currentPoints=null;updateDrivePanel();routeLayer?.clearLayers();showResults(false);$('estimate').classList.add('hidden');updatePins();}
 
 async function ensureLeaflet(){
  if(window.L)return;
@@ -83,31 +86,54 @@ async function initMap(){
  map.on('click',event=>{
    if(discoveryMapMode){discoveryMapMode=false;$('discovery-map').textContent='Choose on map';setDiscoveryCenter({lat:event.latlng.lat,lon:event.latlng.lng},'Chosen map location');return;}
    if(pinTarget===null)return;
-   pinLatLon={lat:event.latlng.lat,lon:event.latlng.lng};
+   pinLatLon=mapPinLocation(event.latlng);
+   if(!pinLatLon){$('pin-instructions').textContent='Invalid map location. Choose a valid point before saving.';return;}
    L.circleMarker(event.latlng,{radius:9,color:'#fff',weight:2,fillColor:'#f59e0b',fillOpacity:1}).addTo(markerLayer);
-   $('pin-info').textContent=`Pin selected: ${pinLatLon.lat.toFixed(6)}, ${pinLatLon.lon.toFixed(6)}`;
+   if($('pin-instructions'))$('pin-instructions').textContent='New pin selected. Save pin to update the route, or Cancel.';
  });
  updatePins();
+ updateMapEditButton();
  if(currentRoute){await drawRoute();}
 }
 function icon(number,kind='stop',isExtra=false){const extra=isExtra?' extra':'';const label=number===null?'●':number;return L.divIcon({html:`<span class="marker-pin ${kind}${extra}">${label}</span>`,className:'',iconSize:[30,30],iconAnchor:[15,15]});}
 function updatePins(){
  if(!markerLayer)return;
- markerLayer.clearLayers();const bounds=[];
+ markerLayer.clearLayers();routePopups.clear();const bounds=[];
  const order=currentRoute?currentRoute.order.map(i=>currentPoints[i]):getSelected();
  for(let i=0;i<order.length;i++){
    const d=order[i];if(!Number.isFinite(d?.lat)||!Number.isFinite(d?.lon))continue;
    const m=L.marker([d.lat,d.lon],{icon:icon(currentRoute?i+1:null,'stop',!d.featured)});
-   const container=document.createElement('div'); const title=document.createElement('strong');title.textContent=d.name;
+   const container=document.createElement('div');container.className='map-stop-popup';container.dataset.stopId=d.id;const title=document.createElement('strong');title.textContent=d.name;
    const address=document.createElement('p');address.textContent=d.address;
    container.append(title,address);
-   m.bindPopup(container);m.addTo(markerLayer);bounds.push([d.lat,d.lon]);
+   if(currentRoute){
+    const detail=document.createElement('p');detail.className='map-stop-position';detail.textContent=`Stop ${i+1} of ${order.length}${d.mustSee?' · Must see':''}`;container.append(detail);
+    if(driveActive){
+     const hint=document.createElement('p');hint.textContent='Use Live Drive to mark a visit or skip and reroute.';container.append(hint);
+     const button=document.createElement('button');button.type='button';button.className='secondary';button.textContent='Open Live Drive';button.addEventListener('click',focusDrive);container.append(button);
+    }else{
+     const actions=document.createElement('div');actions.className='map-stop-actions';
+     for(const [action,label,disabled,fn] of [
+      ['earlier','↑ Move earlier',i===0,()=>editMappedStop(d.id,'move',-1)],
+      ['later','↓ Move later',i===order.length-1,()=>editMappedStop(d.id,'move',1)],
+      ['remove','Remove from drive',false,()=>editMappedStop(d.id,'remove')],
+      ['pin','Adjust map pin',false,()=>beginPin(d.id)]
+     ]){
+      const button=document.createElement('button');button.type='button';button.className='secondary';button.dataset.mapAction=action;button.textContent=label;button.disabled=disabled||busy||pinTarget!==null;button.addEventListener('click',fn);actions.append(button);
+     }
+     container.append(actions);
+     const hint=document.createElement('small');hint.textContent='Removing keeps your saved display and notes. Start and finish stay fixed.';container.append(hint);
+    }
+   }
+   m.bindPopup(container,{minWidth:220,maxWidth:280,autoPanPaddingTopLeft:[12,70],autoPanPaddingBottomRight:[12,95]});
+   m.on('popupopen',()=>{if(currentRoute&&!driveActive&&pinTarget===null){enterMapEditing();m.getPopup().update();}});
+   m.addTo(markerLayer);routePopups.set(d.id,{marker:m,container});bounds.push([d.lat,d.lon]);
  }
  for(const [key,color] of [['start','start'],['end','end']]){
    const obj=state.endpoints[key];if(obj?.address!==state[key]||!Number.isFinite(obj.lat))continue;
    const m=L.marker([obj.lat,obj.lon],{icon:icon(null,color)});m.bindPopup(key==='start'?'Start':'Finish');m.addTo(markerLayer);bounds.push([obj.lat,obj.lon]);
  }
- if(bounds.length)mapLabel(`${bounds.length} locations mapped. Tap any pin for its address.`);
+ if(bounds.length)mapLabel(currentRoute&&!driveActive?'Tap a numbered pin to move a stop, remove it from this drive, or adjust its pin.':`${bounds.length} locations mapped. Tap any pin for its address.`);
  else mapLabel('Optimize a route to locate and map the displays.');
 }
 function fitMap(){if(!map)return;const layers=[...markerLayer.getLayers(),...routeLayer.getLayers()];const bounds=L.latLngBounds([]);for(const layer of layers){if(layer.getLatLng)bounds.extend(layer.getLatLng());else if(layer.getBounds)bounds.extend(layer.getBounds());}if(bounds.isValid())map.fitBounds(bounds.pad(.14),{maxZoom:15});}
@@ -165,23 +191,26 @@ function removeStop(id){
  state.preset='custom';$('preset').value='custom';save();invalidate();renderStops();status(`Removed ${item.name} from this project.`,'good');
 }
 function beginPin(id){
+ if(busy||driveActive)return;
  if(!map){status('Map is not available; cannot set a pin.','error');return;}
+ if(pinTarget!==null)endPin();
  discoveryMapMode=false;discoveryRevision++;discoveryRequest?.abort();$('discovery-map').textContent='Choose on map';
  pinTarget=id;pinLatLon=null;
- const item=state.displays.find(d=>d.id===id);
- $('pin-info').textContent=`${item.name} · ${item.address}. Tap the correct location on the map.`;
- $('pin-dialog').showModal();
- // On mobile the map is visible above the dialog. Close dialog temporarily for clicking.
- $('pin-dialog').close();
- status(`Pin mode: tap the correct location for ${item.name} on the map, then tap Done below.`,'working');
- const toolbar=document.createElement('div');toolbar.id='pin-toolbar';toolbar.style.cssText='position:fixed;bottom:20px;left:20px;z-index:9999;display:flex;gap:8px;background:#121827;padding:9px;border-radius:12px;border:1px solid #f59e0b';
- const ok=document.createElement('button');ok.className='primary';ok.textContent='Done';ok.addEventListener('click',()=>{
-   if(!pinLatLon){status('Tap the map first, then press Done.','error');return;}
+ const item=state.displays.find(d=>d.id===id);if(!item){endPin();return;}
+ const projectId=activeProjectId,routeBefore=currentRoute;
+ status(`Pin mode: tap the correct location for ${item.name}, then Save pin. Your address stays unchanged.`,'working');
+ const toolbar=document.createElement('div');toolbar.id='pin-toolbar';toolbar.setAttribute('role','region');toolbar.setAttribute('aria-label','Adjust map pin');
+ const instructions=document.createElement('p');instructions.id='pin-instructions';instructions.setAttribute('role','status');instructions.textContent=`${item.name}: tap the correct map location, then Save pin.`;
+ const ok=document.createElement('button');ok.type='button';ok.className='primary';ok.textContent='Save pin';ok.addEventListener('click',async()=>{
+   if(projectId!==activeProjectId||pinTarget!==id||!state.displays.includes(item)){endPin();return;}
+   if(!pinLatLon){$('pin-instructions').textContent='Tap the correct location on the map before saving.';return;}
    item.lat=pinLatLon.lat;item.lon=pinLatLon.lon;item.approved=true;item.geoSource='manual';item.locationPrecision='street';item.ambiguous=false;
-   delete state.cache[item.address.toLowerCase()];save();endPin();invalidate();renderStops();status(`${item.name} location saved on this device.`,'good');
+   delete state.cache[item.address.toLowerCase()];save();endPin();renderStops();
+   if(routeBefore&&currentRoute===routeBefore){clearRouteUndo();currentPoints=currentPoints.map(point=>point.id===id?item:point);lastMatrix=currentRoute.approx?{distances:straightMatrix(currentPoints),durations:null}:null;await refreshEditedRoute(`${item.name} pin updated. Visit order kept.`,id);}
+   else{invalidate();status(`${item.name} location saved on this device.`,'good');}
  });
  const cancel=document.createElement('button');cancel.className='secondary';cancel.textContent='Cancel';cancel.addEventListener('click',endPin);
- toolbar.append(ok,cancel);document.body.append(toolbar);
+ toolbar.append(instructions,ok,cancel);document.body.append(toolbar);map.closePopup();enterMapEditing();updatePins();
  if(validCoordinates(item))map.flyTo([item.lat,item.lon],17);else if(validCoordinates(state.endpoints.start))map.flyTo([state.endpoints.start.lat,state.endpoints.start.lon],13);
 }
 function endPin(){pinTarget=null;pinLatLon=null;$('pin-toolbar')?.remove();updatePins();}
@@ -372,14 +401,67 @@ function renderItinerary(){
  const last=document.createElement('p');last.className='planner-note';last.textContent='Start and finish stay fixed. Use arrows to manually adjust the visit order; links and map will update.';container.append(last);
 }
 async function swapStops(i,j){
- if(busy||!currentRoute||driveActive)return;
- [currentRoute.order[i],currentRoute.order[j]]=[currentRoute.order[j],currentRoute.order[i]];
- currentRoute.variants=[];currentRoute.variantIndex=-1;currentRoute.geometry=null;currentRoute.geometryFailures=new Set();currentRoute.method='manual';currentRoute.comparisonMessage='Manual order. Driving estimates and navigation links reflect your changes.';
- renderRouteSummary();
- await drawRoute();
+ if(!currentRoute||!currentPoints?.[currentRoute.order[i]])return;
+ await editMappedStop(currentPoints[currentRoute.order[i]].id,'move',j-i,false);
+}
+function clearRouteUndo(){routeEditUndo=null;$('map-edit-notice')?.classList.add('hidden');}
+function updateMapEditButton(){
+ const button=$('edit-on-map');button.disabled=!map||driveActive||!currentRoute?.order.length;
+ button.title=map?'Change stops while keeping the other stops in order.':'Map unavailable. You can still use the itinerary arrows.';
+}
+function enterMapEditing(){
+ if(!map||document.body.classList.contains('editing-map'))return;
+ mapEditSession++;
+ document.body.classList.add('editing-map');$('map-edit-back').classList.remove('hidden');$('map-edit-back').textContent=currentRoute?'← Back to itinerary':'← Back to planner';
+ map?.invalidateSize({pan:false});window.scrollTo({top:0,left:0,behavior:'instant'});
+}
+function leaveMapEditing(focus=true){
+ if(!document.body.classList.contains('editing-map'))return;
+ mapEditSession++;
+ document.body.classList.remove('editing-map');$('map-edit-back').classList.add('hidden');map?.invalidateSize({pan:false});
+ if(focus){if(pinTarget!==null)endPin();(currentRoute?$('results'):$('planner-heading')).scrollIntoView({block:'start',behavior:'instant'});(currentRoute?$('edit-on-map'):$('planner-heading')).focus({preventScroll:true});}
+}
+function openRoutePopup(id,action){
+ const popup=routePopups.get(id);if(!popup)return;
+ popup.marker.openPopup();
+ const buttons=[...popup.container.querySelectorAll('button')];
+ (buttons.find(b=>b.dataset.mapAction===action&&!b.disabled)||buttons.find(b=>!b.disabled))?.focus({preventScroll:true});
+}
+async function editMappedStop(id,type,offset,fromMap=true){
+ if(busy||pinTarget!==null||!currentRoute||driveActive)return;
+ const item=state.displays.find(d=>d.id===id);if(!item)return;
+ const plan=editRouteStops(currentPoints,currentRoute.order,lastMatrix,{type,id,offset});if(!plan)return;
+ if(type==='remove'&&item.mustSee&&!confirm(`Remove “${item.name}” from this drive and clear its Must see flag? Its saved details will stay.`))return;
+ routeEditUndo={projectId:activeProjectId,points:currentPoints.slice(),route:{...currentRoute,order:currentRoute.order.slice(),budgetPlan:currentRoute.budgetPlan?{...currentRoute.budgetPlan}:null},matrix:lastMatrix,selected:new Set(state.selected),preset:state.preset,mustSee:type==='remove'?{id,value:item.mustSee}:null};
+ if(type==='remove'){state.selected.delete(id);item.mustSee=false;state.preset='custom';$('preset').value='custom';save();renderStops();}
+ currentPoints=plan.points;currentRoute={...currentRoute,order:plan.order};lastMatrix=plan.matrix;
+ $('map-edit-message').textContent=type==='remove'?`${item.name} removed from this drive. Saved details kept.`:`${item.name} moved ${offset<0?'earlier':'later'}.`;
+ $('map-edit-notice').classList.remove('hidden');
+ await refreshEditedRoute($('map-edit-message').textContent,type==='move'&&fromMap?id:null,offset<0?'earlier':'later');
+}
+async function undoRouteEdit(){
+ if(busy||pinTarget!==null||driveActive||!routeEditUndo||routeEditUndo.projectId!==activeProjectId)return;
+ const previous=routeEditUndo;clearRouteUndo();
+ currentPoints=previous.points;currentRoute=previous.route;lastMatrix=previous.matrix;state.selected=previous.selected;state.preset=previous.preset;$('preset').value=state.preset;
+ if(previous.mustSee){const item=state.displays.find(d=>d.id===previous.mustSee.id);if(item)item.mustSee=previous.mustSee.value;}
+ save();renderStops();await refreshEditedRoute('Last route edit undone.');
+}
+async function refreshEditedRoute(message,popupId,action){
+ const focusSession=mapEditSession;
+ const token=beginOperation();
+ currentRoute={...currentRoute,variants:[],variantIndex:-1,geometry:null,geometryFailures:new Set(),method:'manual',comparisonMessage:'Manual route edits. Other stops keep their order. Optimize again to compare new alternatives.'};
+ if(currentRoute.budgetPlan)currentRoute.budgetPlan={...currentRoute.budgetPlan,excluded:Math.max(0,getSelected().length-currentRoute.order.length),viewingSeconds:currentRoute.order.reduce((sum,i)=>sum+viewingMinutes(currentPoints[i],Number(state.viewMinutes??4))*60,0)};
+ routeLayer?.clearLayers();renderRouteSummary();$('map-edit-undo').disabled=true;
+ try{
+  if(!currentRoute.approx&&!lastMatrix){status('Updating road estimates for the adjusted pin…','working');lastMatrix=await roadMatrix(currentPoints,token.signal);token.signal.throwIfAborted();renderRouteSummary();}
+  status(message+' Updating the map…','working');await drawRoute(token.signal);token.signal.throwIfAborted();
+  if(!$('status').classList.contains('error'))status(message+' Route links and estimates updated.','good');
+ }catch(error){if(!token.signal.aborted){renderRouteSummary();status('Your edit is kept, but road estimates could not be updated: '+error.message+' Optimize again to retry.','error');}}
+ finally{if(operation===token){finishOperation(token);$('map-edit-undo').disabled=false;if(popupId&&focusSession===mapEditSession&&document.body.classList.contains('editing-map'))openRoutePopup(popupId,action);}}
 }
 function renderRouteSummary(){
- showResults(true);renderMetrics();renderRouteChoices();renderNavigation();renderItinerary();updateDrivePanel();updatePins();mapLabel(currentRoute.approx?'Approximate straight-line order only — NOT based on roads':'Ordered using mapped driving roads. Inspect pins before navigating.');
+ showResults(true);renderMetrics();renderRouteChoices();renderNavigation();renderItinerary();updateDrivePanel();updatePins();mapLabel(currentRoute.approx?'Approximate order, not road directions. Tap a numbered pin to edit stops.':driveActive?'Use Live Drive to mark visits or skip and reroute.':'Tap a numbered pin to move a stop, remove it from this drive, or adjust its pin.');
+ updateMapEditButton();
  renderSchedule(state,currentRoute,currentPoints,lastMatrix,currentProject());
 }
 function updateViewingEstimates(){
@@ -417,6 +499,7 @@ async function drawRoute(signal){
 }
 async function calculate(approx=false){
  if(busy)return;
+ clearRouteUndo();if(pinTarget!==null)endPin();
  const selected=getSelected();if(!selected.length){status('Choose at least one display.','error');return;}
  if(selected.length>68){status('Choose no more than 68 displays in one trip.','error');return;}
  state.start=$('start-input').value.trim();state.end=$('end-input').value.trim();
@@ -898,9 +981,10 @@ function savedDrive(){
  return session;
 }
 function saveDrive(){state.drive={fingerprint:driveFingerprint(),remainingIds:driveRemainingIds.slice(),anchorId:driveAnchorId,total:driveTotal};save();}
-function focusDrive(){document.body.classList.add('driving');$('drive-panel').scrollIntoView({block:'start',behavior:'instant'});$('drive-visited').focus({preventScroll:true});}
+function focusDrive(){leaveMapEditing(false);document.body.classList.add('driving');$('drive-panel').scrollIntoView({block:'start',behavior:'instant'});$('drive-visited').focus({preventScroll:true});}
 function beginDrive(){
  if(!currentRoute||currentRoute.approx||busy)return;
+ clearRouteUndo();if(pinTarget!==null)endPin();
  driveActive=true;driveAnchor={...currentPoints[0]};driveFinish={...currentPoints.at(-1)};
  currentRoute.liveDeparture=Date.now();
  driveRemainingIds=currentRoute.order.map(i=>currentPoints[i].id);driveTotal=driveRemainingIds.length;driveAnchorId=null;saveDrive();
@@ -1021,6 +1105,10 @@ function importSharedDrive(){
  save();portfolio.projects.push(next);activeProjectId=next.id;state=stateFromProject(next);dismissShare();syncControls();invalidate();renderStops();save();status(`Imported ${displays.length} shared houses into a NEW project. Check addresses before driving.`,'good');
 }
 function wire(){
+ $('map-edit-undo').addEventListener('click',undoRouteEdit);
+ $('map-edit-back').addEventListener('click',()=>leaveMapEditing());
+ $('edit-on-map').addEventListener('click',()=>{if(!currentRoute||driveActive)return;enterMapEditing();openRoutePopup(currentPoints[currentRoute.order[0]]?.id);});
+ document.addEventListener('keydown',event=>{if(event.key==='Escape'&&pinTarget!==null){event.preventDefault();endPin();status('Pin adjustment canceled. Your location and route are unchanged.');}else if(event.key==='Escape'&&document.body.classList.contains('editing-map')){event.preventDefault();leaveMapEditing();}});
  initPanelResize({layout:document.querySelector('.layout'),handle:$('panel-resizer'),mapArea:document.querySelector('.map-area'),onMapResize:()=>map?.invalidateSize({pan:false,debounceMoveend:true})});
  syncControls();
  if(!rawPortfolio&&!legacy&&!storageReadError&&!location.hash.startsWith('#tour='))$('welcome').classList.remove('hidden');
