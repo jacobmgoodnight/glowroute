@@ -24,6 +24,8 @@ Built for phones and desktops. No account required.
 
 **New in v1.7:** nearby discovery from known pins, reviewed tour suggestions, optional departure/arrival schedules, per-display viewing times, richer source facts and filters, and an authorized-feed review pipeline. No new services, accounts or runtime dependencies. See the [code audit and release details](docs/RELEASE-v1.7.md), [feed authorization contract](feeds/README.md), and [Explorer backup/retirement checklist](docs/RETIREMENT.md).
 
+**New in v1.7.1:** edit an optimized drive directly from its numbered map pins: change the visit order, remove a stop from the drive, or correct its pin. See the [workflow review and next priorities](docs/UX-REVIEW-v1.7.1.md).
+
 ## ✨ What can GlowRoute do?
 
 | Feature | What it helps you do |
@@ -48,6 +50,17 @@ GlowRoute works for **your own neighborhood or any area where you have display a
 5. Open a navigation leg in **Apple Maps or Google Maps**, or start **Live Drive Mode** for a focused next-stop view. A passenger or parked driver can mark visits, skip/reroute, retry without GPS and return to the full itinerary. After a reload, **Resume interrupted drive** uses saved remaining stops and your last confirmed display or saved starting address.
 
 **Tip:** You can review imported addresses and edit a map pin before routing. Some residential addresses are geocoded only approximately.
+
+### Adjust an optimized drive on the map
+
+After **Optimize my route**, choose **Edit stops on map** or tap a numbered stop pin. Its popup shows the display name, address and position in the drive.
+
+- **Move earlier / Move later** changes one stop's visit order while keeping the other stops in their relative order. Start and Finish stay fixed.
+- **Remove from drive** excludes the stop without deleting its saved display, rating, favorite or notes. Removing a **Must see** stop asks you to confirm clearing that flag. You can select the display again in the saved list.
+- **Adjust map pin** lets you tap a corrected location, then choose **Save pin** or **Cancel**. Saving retains the address and current visit order while updating road estimates.
+- **Undo last edit** reverses the latest removal or reorder while it is available. It is not a pin-edit history.
+
+On phones, map editing opens a focused map; **Back to itinerary** returns to the route. Route links and estimates update after edits; a routing failure is shown rather than reporting stale road estimates as current. Manual changes are your chosen order; optimize again when you want new optimized alternatives. During Live Drive, use the existing **Visited** and **Skip & reroute** actions instead of map editing.
 
 **Desktop layout:** Drag the divider between the planner and map to resize them; your browser remembers the width. Focus the divider and use Left/Right arrows (Shift for larger steps), Home/End for the limits, or Enter to reset. Double-click also resets; Escape cancels a drag. Phones keep the stacked layout.
 

@@ -25,7 +25,10 @@ const server=createServer(async(req,res)=>{
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const base=`http://localhost:${server.address().port}`;
 const mapStub=()=>{
- window.L={map:()=>({setView(){return this;},on(){},flyTo(){return this;},fitBounds(){return this;},invalidateSize(){window.__mapResizes=(window.__mapResizes||0)+1;return this;}}),control:{zoom:()=>({addTo(){}})},tileLayer:()=>({addTo(){}}),layerGroup:()=>({addTo(){return this;},clearLayers(){},getLayers(){return [];}}),marker:()=>({bindPopup(){return this;},addTo(){return this;}}),circleMarker:()=>({addTo(){return this;}}),divIcon:()=>({}),polyline:()=>({addTo(){return this;}}),latLngBounds:()=>({extend(){},isValid(){return false;},pad(){return this;}})};
+ const groups=[];
+ const close=()=>document.querySelectorAll('.mock-map-popup').forEach(el=>el.remove());
+ window.__openRouteStop=id=>{const marker=groups.flatMap(g=>g.layers).find(m=>m.content?.dataset.stopId===id);if(!marker)throw Error('No mapped stop '+id);marker.openPopup();};
+ window.L={map:()=>({setView(){return this;},on(type,fn){if(type==='click')window.__mapClick=fn;},closePopup:close,flyTo(){return this;},fitBounds(){return this;},invalidateSize(){window.__mapResizes=(window.__mapResizes||0)+1;return this;}}),control:{zoom:()=>({addTo(){}})},tileLayer:()=>({addTo(){}}),layerGroup:()=>{const group={layers:[],addTo(){return this;},clearLayers(){for(const marker of this.layers)marker.content?.parentElement?.classList.contains('mock-map-popup')&&marker.content.parentElement.remove();this.layers=[];},getLayers(){return this.layers;}};groups.push(group);return group;},marker:()=>({on(type,fn){this.events??={};this.events[type]=fn;return this;},getPopup(){return {update(){}};},bindPopup(content){this.content=content;return this;},addTo(group){group.layers.push(this);return this;},openPopup(){close();if(this.content instanceof HTMLElement){const wrapper=document.createElement('div');wrapper.className='mock-map-popup';wrapper.style.cssText='position:absolute;top:75px;left:12px;z-index:750;max-width:280px;background:#1b2434;padding:12px';wrapper.append(this.content);document.querySelector('#map').append(wrapper);}this.events?.popupopen?.();return this;}}),circleMarker:()=>({addTo(){return this;}}),divIcon:()=>({}),polyline:()=>({addTo(){return this;}}),latLngBounds:()=>({extend(){},isValid(){return false;},pad(){return this;}})};
  Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.__copied=text;}}});
 };
 const displays=Array.from({length:4},(_,i)=>({id:`demo${i+1}`,name:['Denver Art Museum','Colorado State Capitol','Denver Botanic Gardens','Denver Public Library'][i],address:['100 W 14th Avenue Pkwy, Denver, CO','200 E Colfax Ave, Denver, CO','1007 York St, Denver, CO','10 W 14th Ave Pkwy, Denver, CO'][i],lat:39.73+.001*(i+1),lon:-104.95+.001*(i+1),approved:true,geoSource:'manual',rating:3,mustSee:i===0,visitNotes:'PRIVATE NOTE'}));
@@ -33,11 +36,11 @@ const fixture=()=>({activeId:'t1',projects:[{id:'t1',name:'Denver example drive'
 const indices=url=>url.split('/driving/')[1].split('?')[0].split(';').map(p=>Math.round((Number(p.split(',')[1])-39.73)*1000));
 const time=(i,j)=>i===j?0:j>i?(j-i)*60:(i-j)*600;
 const distance=(i,j)=>i===j?0:(i===0&&j===4||i===1&&j===5||i>j&&i<5&&j>0)?100:3000;
-async function prepare(browser,viewport,{saved=true,storageFail=false,corrupt=false,touch=false}={}){
+async function prepare(browser,viewport,{saved=true,storageFail=false,corrupt=false,touch=false,mapFail=false}={}){
  const context=await browser.newContext({viewport,hasTouch:touch,serviceWorkers:'block'}),page=await context.newPage(),errors=[];
  page.on('pageerror',error=>errors.push(error.message));
  const control={fail:false,geometryFail:false,delay:0,calls:[],gpsCalls:0,importDelay:0,snapshotCalls:0,snapshotFail:false};
- await context.addInitScript(mapStub);
+ if(!mapFail)await context.addInitScript(mapStub);
  await context.addInitScript(({saved,storageFail,corrupt,data})=>{
   if(!sessionStorage.getItem('test-initialized')){
    localStorage.clear();if(saved)localStorage.setItem('glowroute:projects:v2',corrupt?'BROKEN JSON':JSON.stringify(data));sessionStorage.setItem('test-initialized','1');
@@ -63,11 +66,86 @@ async function prepare(browser,viewport,{saved=true,storageFail=false,corrupt=fa
 }
 async function optimize(page){await page.locator('#optimize').click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);assert(await page.locator('#results').isVisible(),await page.locator('#status').innerText());}
 async function textOrder(page){return page.locator('.itinerary-label').allTextContents();}
+async function editOnMap(page){if(await page.locator('body').evaluate(b=>b.classList.contains('editing-map')))await page.locator('#map-edit-back').click();await page.locator('#edit-on-map').click();}
+async function navigationEnds(page){return page.locator('#nav-buttons a').evaluateAll(nodes=>['maps.apple.com','www.google.com'].map(host=>{const urls=nodes.map(n=>new URL(n.href)).filter(u=>u.hostname===host);return [urls[0].searchParams.get('origin')||urls[0].searchParams.get('source'),urls.at(-1).searchParams.get('destination')];}));}
 let checks=0;
 function pass(message){checks++;console.log(`PASS ${message}`);}
 const browser=await chromium.launch({headless:true,...(process.env.GLOWROUTE_BROWSER_EXECUTABLE?{executablePath:process.env.GLOWROUTE_BROWSER_EXECUTABLE}:{})});
 console.log(`Browser engine: ${browser.version()}`);
 try{
+ {
+  const {context,page,control,errors}=await prepare(browser,{width:390,height:844});await optimize(page);
+  control.delay=350;await editOnMap(page);const started=page.waitForRequest(r=>r.url().includes('/route/'));await page.locator('.map-stop-popup').getByRole('button',{name:'Move later'}).click();await started;
+  await page.locator('#map-edit-back').click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);
+  assert.equal(await page.locator('body').evaluate(b=>b.classList.contains('editing-map')),false);assert(await page.locator('.controls').isVisible());
+  control.delay=0;await editOnMap(page);await page.locator('.map-stop-popup').getByRole('button',{name:'Adjust map pin'}).click();
+  const before=await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2'));
+  await page.evaluate(()=>window.__mapClick({latlng:{lat:95,lng:181}}));assert.match(await page.locator('#pin-instructions').innerText(),/Invalid map location/);
+  await page.locator('#pin-toolbar').getByRole('button',{name:'Save pin'}).click();assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),before);
+  await page.evaluate(()=>window.__mapClick({latlng:{lat:39.73,lng:181}}));await page.locator('#pin-toolbar').getByRole('button',{name:'Save pin'}).click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);
+  const displays=await page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')).projects[0].state.displays);assert(displays.some(d=>d.lon===-179));assert.deepEqual(errors,[]);await context.close();pass('late map edit cannot reopen the editor after Back; invalid pins are rejected and wrapped longitude saves canonically');
+ }
+ {
+  const {context,page,errors}=await prepare(browser,{width:390,height:844},{mapFail:true});await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Could not load the map library'));await optimize(page);
+  assert(await page.locator('#edit-on-map').isDisabled());assert.match(await page.locator('#edit-on-map').getAttribute('title'),/Map unavailable/);assert.equal(await page.locator('body').evaluate(b=>b.classList.contains('editing-map')),false);
+  assert.equal(await page.locator('.itinerary-row').count(),4);assert.deepEqual(errors,[]);await context.close();pass('unavailable map library keeps itinerary usable and disables entry to map-only editing');
+ }
+ for(const viewport of [{width:1366,height:900},{width:390,height:844}]){
+  const {context,page,control,errors}=await prepare(browser,viewport);
+  const project=async()=>page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')).projects[0].state);
+  const open=async id=>{await page.evaluate(id=>window.__openRouteStop(id),id);return page.locator('.map-stop-popup');};
+  await page.locator('details[aria-label="Optional visit schedule"] summary').click();await page.locator('#departure').fill('2026-12-20T18:00');await page.locator('#departure-zone').fill('America/Denver');await page.locator('#departure-zone').press('Tab');
+  await page.locator('#mode').selectOption('duration');await optimize(page);
+  const before=await textOrder(page),tableCalls=()=>control.calls.filter(u=>u.includes('/table/')).length,baseline=tableCalls();
+  const fixedEndpoints=await navigationEnds(page);
+  await editOnMap(page);assert.match(await page.locator('.map-stop-popup').innerText(),/Stop 1 of 4/);
+  let popup=await open('demo2');await popup.getByRole('button',{name:'Move earlier'}).click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);
+  assert.match((await textOrder(page))[0],/Capitol/);assert.equal(tableCalls(),baseline);assert(await page.locator('#map-edit-undo').isVisible());
+  await page.locator('#map-edit-undo').click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);assert.deepEqual(await textOrder(page),before);
+  popup=await open('demo1');page.once('dialog',d=>d.dismiss());await popup.getByRole('button',{name:'Remove from drive'}).click();assert.equal(await page.locator('.itinerary-row').count(),4);
+  page.once('dialog',d=>d.accept());await popup.getByRole('button',{name:'Remove from drive'}).click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);
+  assert.equal(await page.locator('.itinerary-row').count(),3);assert.equal(await page.locator('.stop').count(),4);assert.equal(await page.locator('#schedule-list li').count(),3);assert.match(await page.locator('#schedule-summary').innerText(),/12 min viewing/);
+  let saved=await project();assert(!saved.selected.includes('demo1'));assert.equal(saved.displays.find(d=>d.id==='demo1').mustSee,false);assert.equal(saved.displays.find(d=>d.id==='demo1').visitNotes,'PRIVATE NOTE');assert.equal(tableCalls(),baseline);
+  const links=await page.locator('#nav-buttons a').evaluateAll(nodes=>nodes.map(n=>n.href));assert(links.every(u=>!u.includes('39.731000')));
+  assert.deepEqual(await navigationEnds(page),fixedEndpoints);
+  await page.locator('#map-edit-undo').click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);saved=await project();assert(saved.selected.includes('demo1'));assert.equal(saved.displays.find(d=>d.id==='demo1').mustSee,true);assert.deepEqual(await textOrder(page),before);
+  popup=await open('demo2');await popup.getByRole('button',{name:'Adjust map pin'}).click();await page.evaluate(()=>window.__mapClick({latlng:{lat:39.7322,lng:-104.9478}}));await page.locator('#pin-toolbar').getByRole('button',{name:'Cancel'}).click();assert.equal((await project()).displays.find(d=>d.id==='demo2').lat,displays[1].lat);assert.deepEqual(await textOrder(page),before);
+  popup=await open('demo2');await popup.getByRole('button',{name:'Adjust map pin'}).click();await page.evaluate(()=>window.__mapClick({latlng:{lat:39.7322,lng:-104.9478}}));await page.locator('#pin-toolbar').getByRole('button',{name:'Save pin'}).click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);
+  saved=await project();const corrected=saved.displays.find(d=>d.id==='demo2');assert.equal(corrected.lat,39.7322);assert.equal(corrected.geoSource,'manual');assert.equal(corrected.address,displays[1].address);assert.deepEqual(await textOrder(page),before);assert.equal(tableCalls(),baseline+1);assert.match(await page.locator('#route-detail').innerText(),/Totals use the mapped itinerary/);
+  control.fail=true;popup=await open('demo2');await popup.getByRole('button',{name:'Move later'}).click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);assert.match(await page.locator('#status').innerText(),/drawing failed/);assert.equal(await page.locator('.itinerary-row').count(),4);assert.match(await page.locator('#route-detail').innerText(),/road-matrix legs/);
+  control.fail=false;await page.locator('#map-edit-back').click();await page.locator('#drive-start').click();popup=await open('demo2');assert.equal(await popup.getByRole('button',{name:'Remove from drive'}).count(),0);assert.equal(await popup.getByRole('button',{name:'Open Live Drive',includeHidden:true}).count(),1);assert(await page.locator('#map-edit-notice').isHidden());
+  await page.locator('#drive-end').click();assert.deepEqual(errors,[]);await context.close();pass(`${viewport.width}px: map move/remove/undo, must-see confirmation, saved display preservation, fixed navigation endpoints, pin cancel/save, outage and Live Drive safety`);
+ }
+ {
+  const {context,page,control,errors}=await prepare(browser,{width:390,height:844});
+  await page.locator('.stop input[type=checkbox]').nth(1).uncheck();await page.locator('.stop input[type=checkbox]').nth(2).uncheck();await page.locator('.stop input[type=checkbox]').nth(3).uncheck();await optimize(page);
+  await editOnMap(page);page.once('dialog',d=>d.accept());await page.locator('.map-stop-popup').getByRole('button',{name:'Remove from drive'}).click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);
+  assert.equal(await page.locator('.itinerary-row').count(),0);assert.equal(await page.locator('#metrics .metric strong').first().innerText(),'0');assert(await page.locator('#edit-on-map').isDisabled());assert.equal(await page.locator('.stop').count(),4);
+  await page.locator('#map-edit-undo').click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);assert.equal(await page.locator('.itinerary-row').count(),1);
+  // A moved pin has no valid old matrix: failure must not retain old time estimates.
+  await editOnMap(page);await page.locator('.map-stop-popup').getByRole('button',{name:'Adjust map pin'}).click();await page.evaluate(()=>window.__mapClick({latlng:{lat:39.7312,lng:-104.9488}}));control.fail=true;
+  await page.locator('#pin-toolbar').getByRole('button',{name:'Save pin'}).click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);assert.equal(await page.locator('#metrics .metric').count(),0);assert.match(await page.locator('#status').innerText(),/edit is kept.*could not be updated/);
+  const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')).projects[0].state);assert.equal(saved.displays[0].lat,39.7312);assert(saved.selected.includes('demo1'));
+  assert.deepEqual(errors,[]);await context.close();pass('last mapped stop removal/undo and corrected-pin outage never retain old travel estimates');
+ }
+ {
+  const {context,page,control,errors}=await prepare(browser,{width:1366,height:900});await optimize(page);
+  await editOnMap(page);await page.locator('.map-stop-popup').getByRole('button',{name:'Adjust map pin'}).click();await page.keyboard.press('Escape');assert.equal(await page.locator('#pin-toolbar').count(),0);await page.locator('#map-edit-back').click();
+  await editOnMap(page);await page.locator('.map-stop-popup').getByRole('button',{name:'Adjust map pin'}).click();await page.evaluate(()=>window.__mapClick({latlng:{lat:39.7342,lng:-104.9458}}));control.delay=500;
+  const started=page.waitForRequest(u=>u.url().includes('/table/'));await page.locator('#pin-toolbar').getByRole('button',{name:'Save pin'}).click();await started;
+  await page.locator('#map-edit-back').click();await page.locator('#project-new').click();await page.locator('#project-name').fill('Independent drive');await page.locator('#project-create-form button[type=submit]').click();await page.waitForTimeout(900);
+  assert(await page.locator('#results').isHidden());assert(await page.locator('#map-edit-notice').isHidden());assert.equal(await page.locator('.stop').count(),0);assert.match(await page.locator('#status').innerText(),/Created Independent drive/);assert.equal(await page.locator('#pin-toolbar').count(),0);
+  assert.deepEqual(errors,[]);await context.close();pass('Escape cancels map-pin mode; interrupted map edits cannot overwrite another project');
+ }
+ {
+  const {context,page,errors}=await prepare(browser,{width:390,height:844});
+  await page.locator('details[aria-label="Optional time budget"] summary').click();await page.locator('#budget-enabled').check();await page.locator('#budget-minutes').fill('20');await optimize(page);
+  const count=await page.locator('.itinerary-row').count();assert(count>0&&count<4);
+  await editOnMap(page);page.on('dialog',d=>d.accept());await page.locator('.map-stop-popup').getByRole('button',{name:'Remove from drive'}).click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);
+  assert.equal(await page.locator('.itinerary-row').count(),count-1);const detail=await page.locator('#route-detail').innerText();assert(detail.includes(`${4-count} optional house(s) left out`));assert(detail.includes(`${(count-1)*4} min viewing`));
+  await page.locator('#map-edit-undo').click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);assert.equal(await page.locator('.itinerary-row').count(),count);assert.match(await page.locator('#route-detail').innerText(),new RegExp(`${count*4} min viewing`));
+  assert.deepEqual(errors,[]);await context.close();pass('map exclusions and undo keep budget exclusions and viewing totals consistent');
+ }
  for(const viewport of [{width:1366,height:900},{width:390,height:844}]){
   const {context,page,control,errors}=await prepare(browser,viewport);
   await page.locator('#directory-toggle').click();await page.waitForFunction(()=>document.querySelector('#directory-status').textContent.includes('31 catalog entries'));assert.equal(control.snapshotCalls,0);

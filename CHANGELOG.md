@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.1 — Edit the drive from its map
+
+- Open numbered route pins to move a display earlier/later, remove it from the current drive, or correct its map location. Add **Edit stops on map** and a focused mobile map with **Back to itinerary**.
+- Keep Start and Finish fixed and preserve the remaining visit order. Removing from a drive retains the saved display and private feedback; removing a must-see display explicitly confirms clearing its mandatory flag. Undo the latest removal or reorder.
+- Give pin corrections explicit **Save pin / Cancel** actions. Retain the address and chosen order, then refresh road estimates, navigation links and schedules. Clear obsolete comparisons, label manual changes and show routing failures without claiming current road estimates.
+- Keep Live Drive on its existing visited/skip/reroute flow. Preserve project storage and personal data; add no runtime dependencies or new services.
+- Add pure route-edit and desktop/mobile browser regressions. Record the public-page competitor review and next workflow priorities in [the UX review](docs/UX-REVIEW-v1.7.1.md).
+
 ## 1.7.0 — Discover, review and schedule holiday tours
 
 - Make source imports explicit: action-only loading of Explorer's older JSON, source/season-aware visible-listing paste, better Indy card names and rural addresses, and duplicate-safe weekly refresh guidance. Allow explicitly reviewed same-holiday archives in newer private drives without changing their original season or claiming current operation. Keep FrightMaps live fetching inactive.
