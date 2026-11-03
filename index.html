@@ -11,11 +11,11 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" onerror="this.onerror=null;this.removeAttribute('integrity');this.href='https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css'"/>
   <link rel="stylesheet" href="./styles.css"/>
   <script type="module" src="./app.js"></script>
-  <title>GlowRoute — Holiday display route planner</title>
+  <title>Fright &amp; Bright Routes — Holiday display route planner</title>
 </head>
 <body>
   <a class="skip-link" href="#planner-heading">Skip to route planner</a>
-  <header class="topbar"><div class="brand"><span class="brand-icon">✳</span><div><b>GlowRoute</b><small>Make every festive mile count</small></div></div><span class="version">V1.7.1</span></header>
+  <header class="topbar"><div class="brand"><span class="brand-icon">✳</span><div><b>Fright &amp; Bright Routes</b><small>Make every festive mile count</small></div></div><span class="version">V1.7.1</span></header>
   <main class="layout">
     <section class="panel controls" id="planner-panel" aria-label="Route planner">
       <div class="panel-heading"><div><p class="eyebrow">PLAN YOUR DRIVE</p><h1 id="planner-heading" tabindex="-1">A better route, less backtracking.</h1><p class="subtext">Add displays, set your start and finish, then optimize. Open the drive in Apple Maps or Google Maps when you're ready.</p></div></div>
@@ -34,7 +34,7 @@
         </form></div>
         <div class="project-backup"><button id="projects-export" class="text-button" type="button">↓ Backup all years</button><label class="text-button file-label">↑ Restore backup<input id="projects-import" type="file" accept=".json,application/json"/></label></div>
       </section>
-      <section id="shared-preview" class="shared-preview hidden" aria-label="Review shared itinerary"><h2>Shared GlowRoute itinerary</h2><p id="shared-summary"></p><div id="shared-stops" class="shared-stops"></div><p class="hint">Review all public display addresses before creating a new local project. Existing projects remain unchanged. Shared endpoints may include a private location.</p><div class="bulk-actions"><button class="primary" type="button" id="shared-import">Save as new drive</button><button class="secondary" type="button" id="shared-dismiss">Dismiss</button></div></section>
+      <section id="shared-preview" class="shared-preview hidden" aria-label="Review shared itinerary"><h2>Shared Fright &amp; Bright Routes itinerary</h2><p id="shared-summary"></p><div id="shared-stops" class="shared-stops"></div><p class="hint">Review all public display addresses before creating a new local project. Existing projects remain unchanged. Shared endpoints may include a private location.</p><div class="bulk-actions"><button class="primary" type="button" id="shared-import">Save as new drive</button><button class="secondary" type="button" id="shared-dismiss">Dismiss</button></div></section>
       <section class="directory-panel" aria-label="Shared display directory">
         <div class="section-heading"><div><h2>Discover displays</h2><p>Browse public listings and your saved stops. Find nearby displays with known pins.</p></div><button id="directory-toggle" class="secondary" type="button">Browse</button></div>
         <div id="directory-panel" class="hidden directory-inner">

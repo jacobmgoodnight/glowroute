@@ -407,7 +407,7 @@ try{
   await page.locator('#update-notice').waitFor({state:'visible'});await page.reload();assert.equal(await page.evaluate(()=>localStorage.getItem('keep-this-project')),'unchanged');
   const keys=await page.evaluate(()=>caches.keys());assert(keys.includes('unrelated-cache'));assert(!keys.includes('glowroute-shell-previous-release-test'));
   failDirectory=true;const cached=await page.evaluate(async()=>{const r=await fetch('./directory/catalog.json');return r.headers.get('X-GlowRoute-Cached');});assert.equal(cached,'true');failDirectory=false;
-  await context.setOffline(true);await page.reload();assert.match(await page.title(),/GlowRoute/);assert.equal(await page.evaluate(()=>localStorage.getItem('keep-this-project')),'unchanged');await context.close();pass('PWA: release update, cache cleanup scoped to GlowRoute, local data retained, marked cached directory, offline shell');
+  await context.setOffline(true);await page.reload();assert.match(await page.title(),/Fright & Bright Routes/);assert.equal(await page.evaluate(()=>localStorage.getItem('keep-this-project')),'unchanged');await context.close();pass('PWA: release update, cache cleanup scoped to GlowRoute, local data retained, marked cached directory, offline shell');
  }
  console.log(`All ${checks} browser scenario groups passed.`);
 }finally{await browser.close();await new Promise(r=>server.close(r));}
