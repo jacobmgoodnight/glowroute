@@ -28,7 +28,7 @@ const mapStub=()=>{
  const groups=[];
  const close=()=>document.querySelectorAll('.mock-map-popup').forEach(el=>el.remove());
  window.__openRouteStop=id=>{const marker=groups.flatMap(g=>g.layers).find(m=>m.content?.dataset.stopId===id);if(!marker)throw Error('No mapped stop '+id);marker.openPopup();};
- window.L={map:()=>({setView(){return this;},on(type,fn){if(type==='click')window.__mapClick=fn;},closePopup:close,flyTo(){return this;},fitBounds(){return this;},invalidateSize(){window.__mapResizes=(window.__mapResizes||0)+1;return this;}}),control:{zoom:()=>({addTo(){}})},tileLayer:()=>({addTo(){}}),layerGroup:()=>{const group={layers:[],addTo(){return this;},clearLayers(){for(const marker of this.layers)marker.content?.parentElement?.classList.contains('mock-map-popup')&&marker.content.parentElement.remove();this.layers=[];},getLayers(){return this.layers;}};groups.push(group);return group;},marker:()=>({on(type,fn){this.events??={};this.events[type]=fn;return this;},getPopup(){return {update(){}};},bindPopup(content){this.content=content;return this;},addTo(group){group.layers.push(this);return this;},openPopup(){close();if(this.content instanceof HTMLElement){const wrapper=document.createElement('div');wrapper.className='mock-map-popup';wrapper.style.cssText='position:absolute;top:75px;left:12px;z-index:750;max-width:280px;background:#1b2434;padding:12px';wrapper.append(this.content);document.querySelector('#map').append(wrapper);}this.events?.popupopen?.();return this;}}),circleMarker:()=>({addTo(){return this;}}),divIcon:()=>({}),polyline:()=>({addTo(){return this;}}),latLngBounds:()=>({extend(){},isValid(){return false;},pad(){return this;}})};
+ window.L={map:()=>({setView(coords){window.__initialMapCenter=coords;return this;},on(type,fn){if(type==='click')window.__mapClick=fn;},closePopup:close,flyTo(){return this;},fitBounds(){return this;},invalidateSize(){window.__mapResizes=(window.__mapResizes||0)+1;return this;}}),control:{zoom:()=>({addTo(){}})},tileLayer:()=>({addTo(){}}),layerGroup:()=>{const group={layers:[],addTo(){return this;},clearLayers(){for(const marker of this.layers)marker.content?.parentElement?.classList.contains('mock-map-popup')&&marker.content.parentElement.remove();this.layers=[];},getLayers(){return this.layers;}};groups.push(group);return group;},marker:()=>({on(type,fn){this.events??={};this.events[type]=fn;return this;},getPopup(){return {update(){}};},bindPopup(content){this.content=content;return this;},addTo(group){group.layers.push(this);return this;},openPopup(){close();if(this.content instanceof HTMLElement){const wrapper=document.createElement('div');wrapper.className='mock-map-popup';wrapper.style.cssText='position:absolute;top:75px;left:12px;z-index:750;max-width:280px;background:#1b2434;padding:12px';wrapper.append(this.content);document.querySelector('#map').append(wrapper);}this.events?.popupopen?.();return this;}}),circleMarker:()=>({addTo(){return this;}}),divIcon:()=>({}),polyline:()=>({addTo(){return this;}}),latLngBounds:()=>({extend(){},isValid(){return false;},pad(){return this;}})};
  Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.__copied=text;}}});
 };
 const displays=Array.from({length:4},(_,i)=>({id:`demo${i+1}`,name:['Denver Art Museum','Colorado State Capitol','Denver Botanic Gardens','Denver Public Library'][i],address:['100 W 14th Avenue Pkwy, Denver, CO','200 E Colfax Ave, Denver, CO','1007 York St, Denver, CO','10 W 14th Ave Pkwy, Denver, CO'][i],lat:39.73+.001*(i+1),lon:-104.95+.001*(i+1),approved:true,geoSource:'manual',rating:3,mustSee:i===0,visitNotes:'PRIVATE NOTE'}));
@@ -61,18 +61,100 @@ async function prepare(browser,viewport,{saved=true,storageFail=false,corrupt=fa
   if(!url.startsWith(base)){await route.abort();return;}
   await route.continue();
  });
- await page.goto(base);await page.waitForSelector('.stop, .empty-state');
+ await page.goto(base);await page.locator('#workflow-nav').waitFor();
  return {context,page,control,errors};
 }
-async function optimize(page){await page.locator('#optimize').click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);assert(await page.locator('#results').isVisible(),await page.locator('#status').innerText());}
+async function stage(page,name){const tab=page.locator(`#workflow-${name}`);if(await tab.getAttribute('aria-selected')!=='true')await tab.click();assert(await page.locator(`#stage-${name}`).isVisible());}
+async function details(page,id){const disclosure=page.locator(`#${id}`);if(await disclosure.getAttribute('open')===null)await disclosure.locator(':scope > summary').click();}
+async function planDisplays(page){await stage(page,'plan');await details(page,'plan-displays');}
+async function browse(page){await stage(page,'discover');if(await page.locator('#directory-panel').getAttribute('class').then(value=>value.includes('hidden')))await page.locator('#directory-toggle').click();}
+async function bulk(page){await stage(page,'discover');if(await page.locator('#bulk-panel').getAttribute('class').then(value=>value.includes('hidden')))await page.locator('#bulk-toggle').click();}
+async function importSource(page){await stage(page,'discover');await details(page,'import-source-details');}
+async function directoryMore(page){await stage(page,'discover');await details(page,'directory-more');}
+async function shareDetails(page){await stage(page,'drive');await details(page,'share-details');}
+async function optimize(page){await stage(page,'plan');await page.locator('#optimize').click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);assert(await page.locator('#stage-drive').isVisible(),await page.locator('#status').innerText());assert(await page.locator('#results').isVisible(),await page.locator('#status').innerText());}
 async function textOrder(page){return page.locator('.itinerary-label').allTextContents();}
-async function editOnMap(page){if(await page.locator('body').evaluate(b=>b.classList.contains('editing-map')))await page.locator('#map-edit-back').click();await page.locator('#edit-on-map').click();}
+async function editOnMap(page){if(await page.locator('body').evaluate(b=>b.classList.contains('editing-map')))await page.locator('#map-edit-back').click();await stage(page,'drive');await page.locator('#edit-on-map').click();}
 async function navigationEnds(page){return page.locator('#nav-buttons a').evaluateAll(nodes=>['maps.apple.com','www.google.com'].map(host=>{const urls=nodes.map(n=>new URL(n.href)).filter(u=>u.hostname===host);return [urls[0].searchParams.get('origin')||urls[0].searchParams.get('source'),urls.at(-1).searchParams.get('destination')];}));}
 let checks=0;
 function pass(message){checks++;console.log(`PASS ${message}`);}
 const browser=await chromium.launch({headless:true,...(process.env.GLOWROUTE_BROWSER_EXECUTABLE?{executablePath:process.env.GLOWROUTE_BROWSER_EXECUTABLE}:{})});
 console.log(`Browser engine: ${browser.version()}`);
 try{
+ for(const viewport of [{width:1366,height:900},{width:390,height:844}]){
+  const {context,page,control,errors}=await prepare(browser,viewport),requests=[];
+  assert.equal(await page.locator('#workflow-plan').getAttribute('aria-selected'),'true');assert.deepEqual(await page.evaluate(()=>window.__initialMapCenter),[39.73,-104.95]);
+  const saved=await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2'));
+  await page.evaluate(()=>{window.__workflowWrites=[];const write=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(this===localStorage)window.__workflowWrites.push(key);return write.call(this,key,value);};});
+  page.on('request',request=>requests.push(request.url()));
+  await page.locator('#workflow-plan').focus();
+  for(const [key,name] of [['ArrowLeft','discover'],['ArrowRight','plan'],['End','drive'],['Home','discover']]){
+   await page.keyboard.press(key);assert.equal(await page.locator(`#workflow-${name}`).getAttribute('aria-selected'),'true');
+   assert.equal(await page.evaluate(()=>document.activeElement.id),`workflow-${name}`);
+   for(const other of ['discover','plan','drive']){
+    assert.equal(await page.locator(`#stage-${other}`).evaluate(el=>el.hidden),other!==name);
+    assert.equal(await page.locator(`#workflow-${other}`).getAttribute('tabindex'),other===name?'0':'-1');
+   }
+   assert(await page.locator('#status').isVisible());assert(await page.locator('#project-picker').isVisible());
+   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  }
+  await stage(page,'plan');const heading=await page.locator('#plan-heading').boundingBox(),nav=await page.locator('#workflow-nav').boundingBox();
+  assert(heading.y+1>=nav.y+nav.height,'stage heading remains below the sticky workflow navigation');
+  if(viewport.width>850){const topbar=await page.locator('.topbar').boundingBox();assert(topbar.y>=-1&&topbar.y+topbar.height<=viewport.height,'desktop stage navigation preserves the page header');}
+  assert.equal(await page.locator('#plan-displays').getAttribute('open'),null);assert.equal(await page.locator('#project-tools').getAttribute('open'),null);
+  assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),saved);assert.deepEqual(await page.evaluate(()=>window.__workflowWrites),[]);
+  assert.deepEqual(requests,[]);assert.equal(control.calls.length,0);assert.equal(control.snapshotCalls,0);assert.equal(await page.locator('body').evaluate(el=>el.classList.contains('driving')),false);
+  assert.deepEqual(errors,[]);await context.close();pass(`${viewport.width}px: keyboard stage tabs, one visible pane, progressive disclosure, no background requests/storage writes and no horizontal overflow`);
+ }
+ {
+  const {context,page,errors}=await prepare(browser,{width:390,height:844});await bulk(page);
+  await page.locator('#bulk-text').fill('First display — 301 New St, Portland, OR\nSecond display — 302 New St, Portland, OR');await page.locator('#import-preview').click();
+  const name=page.locator('.import-review-row').first().locator('input[aria-label^="Display name"]');await name.fill('My reviewed label');await page.locator('.import-review-row').nth(1).locator('input[type=checkbox]').uncheck();
+  const saved=await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),paste=await page.locator('#bulk-text').inputValue();
+  await stage(page,'plan');await stage(page,'drive');await stage(page,'discover');
+  assert.equal(await name.inputValue(),'My reviewed label');assert.equal(await page.locator('.import-review-row').nth(1).locator('input[type=checkbox]').isChecked(),false);assert.equal(await page.locator('#bulk-text').inputValue(),paste);
+  assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),saved);
+  await page.locator('#import-confirm').click();assert(await page.locator('#stage-plan').isVisible());assert.equal(await page.locator('.stop').count(),5);
+  assert.deepEqual(errors,[]);await context.close();pass('switching stages preserves edited import previews and typed input; applying reviewed displays continues to Plan');
+ }
+ {
+  const {context,page,control,errors}=await prepare(browser,{width:390,height:844});control.importDelay=250;await bulk(page);await importSource(page);
+  await page.locator('#website-url').fill('https://listing.example.test/displays');const saved=await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2'));
+  const started=page.waitForRequest('https://listing.example.test/displays');await page.locator('#website-load').click();await started;await stage(page,'plan');
+  await page.waitForFunction(()=>document.querySelectorAll('.import-review-row').length===1);assert(await page.locator('#stage-plan').isVisible());assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),saved);
+  await stage(page,'discover');assert(await page.locator('.import-review-row').isVisible());assert.match(await page.locator('.import-review-row input[aria-label^="Display name"]').inputValue(),/Late display/);
+  assert.deepEqual(errors,[]);await context.close();pass('switching stages keeps a pending website import alive without applying data or stealing the chosen view');
+ }
+ {
+  const {context,page,control,errors}=await prepare(browser,{width:390,height:844});control.delay=250;
+  const started=page.waitForRequest(request=>request.url().includes('/table/'));await page.locator('#optimize').click();await started;await stage(page,'discover');
+  await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);assert(await page.locator('#stage-discover').isVisible());assert.equal(await page.locator('.itinerary-row').count(),4);
+  assert.equal(await page.locator('body').evaluate(el=>el.classList.contains('driving')),false);await stage(page,'drive');assert(await page.locator('#results').isVisible());assert(await page.locator('#drive-start').isEnabled());
+  assert.deepEqual(errors,[]);await context.close();pass('pending optimization respects a later stage choice while keeping the completed route available without starting Live Drive');
+ }
+ {
+  const {context,page,control,errors}=await prepare(browser,{width:390,height:844});await optimize(page);await page.locator('#drive-start').click();
+  await page.locator('#drive-note-details summary').click();await page.locator('#drive-notes').fill('Resume this private memory');await page.reload();control.fail=true;
+  await page.locator('#drive-resume').click();await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Could not reroute'));
+  assert(await page.locator('#stage-drive').isVisible());assert(await page.locator('#drive-retry').isVisible());assert(await page.locator('#drive-retry').isEnabled());assert(await page.locator('#drive-end').isVisible());assert(await page.locator('#drive-end').isEnabled());
+  assert.equal(await page.locator('#drive-notes').inputValue(),'Resume this private memory');assert.match(await page.locator('#drive-current').innerText(),/4 remaining/);assert.equal(await page.locator('#metrics .metric').count(),0);
+  control.fail=false;await page.locator('#drive-retry').click();await page.waitForFunction(()=>!document.querySelector('#drive-visited').disabled);await page.locator('#drive-end').click();
+  assert.deepEqual(errors,[]);await context.close();pass('resume during road-service outage exposes Retry/End and preserves remaining stops and rider feedback; retry recovers');
+ }
+ {
+  const {context,page,errors}=await prepare(browser,{width:390,height:844});await optimize(page);await page.locator('#drive-start').click();
+  await page.evaluate(()=>{const saved=JSON.parse(localStorage.getItem('glowroute:projects:v2'));const state=saved.projects.find(project=>project.id===saved.activeId).state;delete state.endpoints.start;state.cache={};localStorage.setItem('glowroute:projects:v2',JSON.stringify(saved));});
+  await page.route(/^https:\/\/nominatim\.openstreetmap\.org\/search\?/,async route=>{await new Promise(resolve=>setTimeout(resolve,350));await route.fulfill({json:[{lat:'39.73',lon:'-104.95',display_name:'Saved starting point'}]});});
+  await page.reload();const requested=page.waitForRequest(request=>request.url().startsWith('https://nominatim.openstreetmap.org/search?'));await page.locator('#drive-resume').click();await requested;await stage(page,'discover');
+  await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Rerouted 4 remaining'));assert(await page.locator('#stage-discover').isVisible());assert.equal(await page.locator('body').evaluate(el=>el.classList.contains('driving')),false);
+  await stage(page,'drive');assert(await page.locator('#drive-end').isVisible());await page.locator('#drive-end').click();assert.deepEqual(errors,[]);await context.close();pass('delayed resume geocoding respects a newer stage choice while restoring the session and keeping controls reachable');
+ }
+ {
+  const {context,page,errors}=await prepare(browser,{width:390,height:844});await planDisplays(page);await page.locator('.stop-actions summary').first().click();await page.locator('.stop-menu button[title="Place or correct this stop on the map"]').first().click();
+  assert(await page.locator('#pin-toolbar').isVisible());await page.locator('#map-edit-back').click();assert(await page.locator('#stage-plan').isVisible());assert.equal(await page.locator('#pin-toolbar').count(),0);
+  await optimize(page);await editOnMap(page);await page.locator('#map-edit-back').click();assert(await page.locator('#stage-drive').isVisible());
+  assert.deepEqual(errors,[]);await context.close();pass('map editing returns to the invoking Plan or Drive stage and cancels unfinished pin placement');
+ }
  {
   const {context,page,control,errors}=await prepare(browser,{width:390,height:844});await optimize(page);
   control.delay=350;await editOnMap(page);const started=page.waitForRequest(r=>r.url().includes('/route/'));await page.locator('.map-stop-popup').getByRole('button',{name:'Move later'}).click();await started;
@@ -94,8 +176,8 @@ try{
   const {context,page,control,errors}=await prepare(browser,viewport);
   const project=async()=>page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')).projects[0].state);
   const open=async id=>{await page.evaluate(id=>window.__openRouteStop(id),id);return page.locator('.map-stop-popup');};
-  await page.locator('details[aria-label="Optional visit schedule"] summary').click();await page.locator('#departure').fill('2026-12-20T18:00');await page.locator('#departure-zone').fill('America/Denver');await page.locator('#departure-zone').press('Tab');
-  await page.locator('#mode').selectOption('duration');await optimize(page);
+  await stage(page,'plan');await page.locator('details[aria-label="Optional visit schedule"] summary').click();await page.locator('#departure').fill('2026-12-20T18:00');await page.locator('#departure-zone').fill('America/Denver');await page.locator('#departure-zone').press('Tab');
+  await stage(page,'plan');await page.locator('#mode').selectOption('duration');await optimize(page);
   const before=await textOrder(page),tableCalls=()=>control.calls.filter(u=>u.includes('/table/')).length,baseline=tableCalls();
   const fixedEndpoints=await navigationEnds(page);
   await editOnMap(page);assert.match(await page.locator('.map-stop-popup').innerText(),/Stop 1 of 4/);
@@ -118,8 +200,8 @@ try{
  }
  {
   const {context,page,control,errors}=await prepare(browser,{width:390,height:844});
-  await page.locator('.stop input[type=checkbox]').nth(1).uncheck();await page.locator('.stop input[type=checkbox]').nth(2).uncheck();await page.locator('.stop input[type=checkbox]').nth(3).uncheck();await optimize(page);
-  await editOnMap(page);page.once('dialog',d=>d.accept());await page.locator('.map-stop-popup').getByRole('button',{name:'Remove from drive'}).click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);
+  await planDisplays(page);await page.locator('.stop input[type=checkbox]').nth(1).uncheck();await page.locator('.stop input[type=checkbox]').nth(2).uncheck();await page.locator('.stop input[type=checkbox]').nth(3).uncheck();await optimize(page);
+  await editOnMap(page);page.once('dialog',d=>d.accept());await page.locator('.map-stop-popup').getByRole('button',{name:'Remove from drive'}).click();await page.waitForFunction(()=>!document.querySelector('#map-edit-undo').disabled);
   assert.equal(await page.locator('.itinerary-row').count(),0);assert.equal(await page.locator('#metrics .metric strong').first().innerText(),'0');assert(await page.locator('#edit-on-map').isDisabled());assert.equal(await page.locator('.stop').count(),4);
   await page.locator('#map-edit-undo').click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);assert.equal(await page.locator('.itinerary-row').count(),1);
   // A moved pin has no valid old matrix: failure must not retain old time estimates.
@@ -148,15 +230,15 @@ try{
  }
  for(const viewport of [{width:1366,height:900},{width:390,height:844}]){
   const {context,page,control,errors}=await prepare(browser,viewport);
-  await page.locator('#directory-toggle').click();await page.waitForFunction(()=>document.querySelector('#directory-status').textContent.includes('31 catalog entries'));assert.equal(control.snapshotCalls,0);
-  const original=await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2'));await page.locator('#explorer-load').click();await page.waitForFunction(()=>document.querySelector('#explorer-status').textContent.includes('older discoveries loaded'));assert.equal(control.snapshotCalls,1);assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),original);
+  await browse(page);await page.waitForFunction(()=>document.querySelector('#directory-status').textContent.includes('31 catalog entries'));assert.equal(control.snapshotCalls,0);
+  const original=await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2'));await directoryMore(page);await page.locator('#explorer-load').click();await page.waitForFunction(()=>document.querySelector('#explorer-status').textContent.includes('older discoveries loaded'));assert.equal(control.snapshotCalls,1);assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),original);
   await page.locator('#directory-search').fill('Explorer archive fixture');await page.locator('.directory-row input').check();await page.locator('#directory-review-selected').click();assert(await page.locator('#directory-apply').isDisabled());await page.locator('#directory-review-items input[type=checkbox]').check();page.once('dialog',d=>d.accept());await page.locator('#directory-apply').click();assert.equal(await page.locator('.stop').count(),5);
   let project=await page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')).projects[0].state);const archive=project.displays.find(d=>d.name==='Explorer archive fixture');assert.equal(archive.sourceYear,2025);assert.equal(archive.needsSeasonCheck,true);assert.equal(project.displays[0].visitNotes,'PRIVATE NOTE');
-  await page.locator('#source-paste-open').click();await page.locator('#source-directories .source-directory').filter({hasText:'Indy with Kids · Christmas'}).getByRole('button',{name:'Paste listings'}).click();
+  await directoryMore(page);await page.locator('#source-paste-open').click();await details(page,'import-source-details');await page.locator('#source-directories .source-directory').filter({hasText:'Indy with Kids · Christmas'}).getByRole('button',{name:'Paste listings'}).click();
   await page.locator('#bulk-text').fill('Christmas Lights List for Example County | 2025\nExample Lights\nExample County\nAdd to Route\nFree\nAddress & Details\nAddress\n123 Example Road, Denver, CO\nCost\nFree\nFull details');await page.locator('#import-preview').click();assert.equal(await page.locator('.import-review-row').count(),1);assert.equal(await page.locator('.import-review-row input[aria-label^="Display name"]').inputValue(),'Example Lights');assert.equal(await page.locator('#import-source-year').inputValue(),'2025');await page.locator('#import-confirm').click();assert.equal(await page.locator('.stop').count(),6);
   project=await page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')).projects[0].state);const pasted=project.displays.find(d=>d.name==='Example Lights');assert.equal(pasted.sourceYear,2025);assert.equal(pasted.sourceHoliday,'Christmas');assert.match(pasted.sourceUrl,/indywithkids/);
-  await page.locator('#bulk-toggle').click();await page.locator('#website-url').fill('https://indywithkids.com/christmas-lights-list-indianapolis-central-indiana/');await page.locator('#import-source-year').fill('2025');await page.locator('#bulk-text').fill('Example Lights — 123 Example Road, Denver, CO\nNew Lights — 124 Example Road, Denver, CO');await page.locator('#import-preview').click();assert.match(await page.locator('#import-review-summary').innerText(),/1 selected · 1 already listed/);await page.locator('#import-confirm').click();assert.equal(await page.locator('.stop').count(),7);
-  control.snapshotFail=true;await page.locator('#explorer-load').click();await page.waitForFunction(()=>document.querySelector('#explorer-status').textContent.includes('Existing data retained'));assert.equal(await page.locator('.stop').count(),7);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);await context.close();pass(`${viewport.width}px: action-only old snapshot, explicit unverified archive import, visible-guide paste, retained source season, weekly duplicate-safe append and snapshot failure recovery`);
+  await bulk(page);await importSource(page);await page.locator('#website-url').fill('https://indywithkids.com/christmas-lights-list-indianapolis-central-indiana/');await page.locator('#import-source-year').fill('2025');await page.locator('#bulk-text').fill('Example Lights — 123 Example Road, Denver, CO\nNew Lights — 124 Example Road, Denver, CO');await page.locator('#import-preview').click();assert.match(await page.locator('#import-review-summary').innerText(),/1 selected · 1 already listed/);await page.locator('#import-confirm').click();assert.equal(await page.locator('.stop').count(),7);
+  control.snapshotFail=true;await directoryMore(page);await page.locator('#explorer-load').click();await page.waitForFunction(()=>document.querySelector('#explorer-status').textContent.includes('Existing data retained'));assert.equal(await page.locator('.stop').count(),7);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);await context.close();pass(`${viewport.width}px: action-only old snapshot, explicit unverified archive import, visible-guide paste, retained source season, weekly duplicate-safe append and snapshot failure recovery`);
  }
  {
   const {context,page,errors}=await prepare(browser,{width:390,height:844});
@@ -173,23 +255,23 @@ try{
  }
  for(const viewport of [{width:1366,height:900},{width:390,height:844}]){
   const {context,page,control,errors}=await prepare(browser,viewport);
-  await page.locator('#directory-toggle').click();await page.waitForFunction(()=>document.querySelector('#directory-status').textContent.includes('31 catalog entries'));
+  await browse(page);await page.waitForFunction(()=>document.querySelector('#directory-status').textContent.includes('31 catalog entries'));
   await page.locator('.nearby-options summary').click();await page.locator('#discovery-radius').selectOption('5');assert.equal(await page.locator('.directory-row').count(),0);assert.match(await page.locator('#directory-summary').innerText(),/Set a search location/);
   await page.locator('#discovery-gps').click();await page.waitForFunction(()=>document.querySelector('#discovery-location-status').textContent.includes('permission denied'));assert.match(await page.locator('#discovery-location-status').innerText(),/Enter an address/);
   await page.locator('#discovery-address').fill('39.730000,-104.950000');await page.locator('#discovery-find').click();await page.locator('#directory-sort').selectOption('nearest');assert.equal(await page.locator('.directory-row').count(),4);assert.match(await page.locator('.directory-row').first().innerText(),/approximate geographic distance/);
   assert.equal(control.calls.length,0);const before=await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2'));
   await page.locator('#discovery-suggest').click();assert(await page.locator('#directory-review').isVisible());assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),before);
   page.once('dialog',d=>d.accept());await page.locator('#directory-apply').click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);assert(await page.locator('#results').isVisible());assert.equal(await page.locator('.itinerary-row').count(),4);
-  await page.locator('details[aria-label="Optional visit schedule"] summary').click();await page.locator('#departure').fill('2026-12-20T18:00');await page.locator('#departure-zone').fill('America/Denver');await page.locator('#departure-zone').press('Tab');
-  assert(await page.locator('#schedule-panel').isVisible());assert.equal(await page.locator('#schedule-list li').count(),4);assert.match(await page.locator('#schedule-summary').innerText(),/driving.*viewing.*Finish/);assert.match(await page.locator('#schedule-list').innerText(),/Hours unknown/);
-  await page.locator('#departure').fill('2026-03-08T02:30');await page.locator('#departure').press('Tab');assert.match(await page.locator('#schedule-summary').innerText(),/does not exist/);
-  await page.locator('#departure').fill('2026-12-20T18:00');await page.locator('#departure').press('Tab');await page.locator('.stop-actions summary').first().click();const duration=page.locator('.stop-actions input[type=number]').first(),calls=control.calls.length;await duration.fill('12');await duration.press('Tab');assert(await page.locator('#results').isVisible());
+  await stage(page,'plan');await page.locator('details[aria-label="Optional visit schedule"] summary').click();await page.locator('#departure').fill('2026-12-20T18:00');await page.locator('#departure-zone').fill('America/Denver');await page.locator('#departure-zone').press('Tab');
+  await stage(page,'drive');assert(await page.locator('#schedule-panel').isVisible());assert.equal(await page.locator('#schedule-list li').count(),4);assert.match(await page.locator('#schedule-summary').innerText(),/driving.*viewing.*Finish/);assert.match(await page.locator('#schedule-list').innerText(),/Hours unknown/);
+  await stage(page,'plan');await page.locator('#departure').fill('2026-03-08T02:30');await page.locator('#departure').press('Tab');assert.match(await page.locator('#schedule-summary').innerText(),/does not exist/);
+  await page.locator('#departure').fill('2026-12-20T18:00');await page.locator('#departure').press('Tab');await planDisplays(page);await page.locator('.stop-actions summary').first().click();const duration=page.locator('.stop-actions input[type=number]').first(),calls=control.calls.length;await duration.fill('12');await duration.press('Tab');await stage(page,'drive');assert(await page.locator('#results').isVisible());
   assert.match(await page.locator('#schedule-summary').innerText(),/24 min viewing/);assert.equal(control.calls.length,calls);assert.equal((await page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')).projects[0].state.displays[0])).visitNotes,'PRIVATE NOTE');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);
   await page.screenshot({path:`test-results/v17-planning-${viewport.width}.png`,fullPage:true});await context.close();pass(`${viewport.width}px: radius/no-location, denied GPS, nearest saved pins, private suggested tour review, road routing, schedule, DST gap and per-stop viewing override`);
  }
  {
-  const {context,page,errors}=await prepare(browser,{width:390,height:844});await page.locator('#directory-toggle').click();await page.waitForFunction(()=>document.querySelector('#directory-status').textContent.includes('31 catalog entries'));await page.locator('.nearby-options summary').click();
+  const {context,page,errors}=await prepare(browser,{width:390,height:844});await browse(page);await page.waitForFunction(()=>document.querySelector('#directory-status').textContent.includes('31 catalog entries'));await page.locator('.nearby-options summary').click();
   const entries=[{id:'city',name:'City-only discovery',town:'Denver',address:'',season:'Halloween',year:2026,lat:39.73,lng:-104.95,sources:[{name:'Permitted fixture',url:'https://example.org/city',recordId:'city'}]},{id:'archive',name:'Archived fixture',address:'999 Test St, Denver, CO',season:'Christmas',year:2025,sources:[{name:'Permitted fixture',url:'https://example.org/archive',recordId:'archive'}]}];
   const saved=await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2'));
   await page.locator('#discovery-snapshot').setInputFiles({name:'review.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(entries))});await page.waitForFunction(()=>document.querySelector('#discovery-snapshot-status').textContent.includes('2 unreviewed'));
@@ -231,7 +313,7 @@ try{
  }
  for(const viewport of [{width:1366,height:900},{width:390,height:844}]){
   const {context,page,control,errors}=await prepare(browser,viewport);
-  assert(await page.locator('#drive-feedback').isHidden());await page.locator('#mode').selectOption('duration');await optimize(page);
+  assert(await page.locator('#drive-feedback').isHidden());await stage(page,'plan');await page.locator('#mode').selectOption('duration');await optimize(page);
   assert(await page.locator('#drive-feedback').isHidden());await page.locator('#drive-start').click();
   const feedback=page.locator('#drive-feedback'),rating=page.locator('#drive-rating'),notes=page.locator('#drive-notes');
   const project=async()=>page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')).projects[0].state);
@@ -245,10 +327,10 @@ try{
   assert.equal(await page.locator('#drive-favorite').getAttribute('aria-pressed'),'true');assert.match(await page.locator('#drive-feedback-status').innerText(),/Saved on this device/);
   await page.reload();await page.locator('#drive-resume').click();await page.waitForFunction(()=>!document.querySelector('#drive-visited').disabled);
   assert.equal(await feedback.getAttribute('data-display-id'),'demo1');assert.equal(await rating.locator('input:checked').inputValue(),'5');assert.equal(await notes.inputValue(),note);
-  await page.locator('#drive-full').click();assert.equal(await page.locator('.stop .rating-select').first().inputValue(),'5');assert.match(await page.locator('.stop').first().innerText(),/RIDER PRIVATE NOTE/);
-  await page.locator('#share-text').click();assert(!(await page.evaluate(()=>window.__copied)).includes('RIDER PRIVATE NOTE'));
+  await page.locator('#drive-full').click();await planDisplays(page);assert.equal(await page.locator('.stop .rating-select').first().inputValue(),'5');assert.match(await page.locator('.stop').first().innerText(),/RIDER PRIVATE NOTE/);
+  await shareDetails(page);await page.locator('#share-text').click();assert(!(await page.evaluate(()=>window.__copied)).includes('RIDER PRIVATE NOTE'));
   // Existing list edits must be reflected when returning to the current stop.
-  await page.locator('.stop .rating-select').first().selectOption('4');await page.locator('#drive-full').click();assert.equal(await rating.locator('input:checked').inputValue(),'4');
+  await planDisplays(page);await page.locator('.stop .rating-select').first().selectOption('4');await stage(page,'drive');await page.locator('#drive-full').click();assert.equal(await rating.locator('input:checked').inputValue(),'4');
   await page.locator('#drive-note-details summary').click();await notes.fill('Last keystroke before Visited');control.delay=250;await page.locator('#drive-visited').click();
   assert(await rating.locator('input').first().isDisabled());assert.equal((await project()).displays.find(d=>d.id==='demo1').visitNotes,'Last keystroke before Visited');
   await page.waitForFunction(()=>!document.querySelector('#drive-visited').disabled);assert.notEqual(await feedback.getAttribute('data-display-id'),'demo1');assert.equal(await rating.locator('input:checked').inputValue(),'3');assert.equal(await notes.inputValue(),'PRIVATE NOTE');
@@ -257,7 +339,7 @@ try{
   assert.notEqual(await feedback.getAttribute('data-display-id'),nextId);assert.equal((await project()).displays.find(d=>d.id===nextId).rating,2);assert.equal(await rating.locator('input:checked').inputValue(),'3');
   // Personal feedback remains available after a routing-service failure.
   await page.locator('#drive-note-details summary').click();await notes.fill('Available after outage');assert.match(await page.locator('#drive-feedback-status').innerText(),/Saved on this device/);
-  await page.locator('#drive-full').click();await page.locator('#share-link').click();assert(!(await page.evaluate(()=>window.__copied)).includes('Available after outage'));await page.locator('#drive-full').click();
+  await page.locator('#drive-full').click();await shareDetails(page);await page.locator('#share-link').click();assert(!(await page.evaluate(()=>window.__copied)).includes('Available after outage'));await page.locator('#drive-full').click();
   assert.equal(await page.evaluate(()=>window.injected),undefined);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await page.locator('#drive-visited').click();await page.waitForFunction(()=>!document.querySelector('#drive-visited').disabled);await page.locator('#drive-visited').click();await page.waitForFunction(()=>document.querySelector('#drive-current').textContent.includes('All displays completed'));
   assert(await feedback.isHidden());assert(await rating.locator('input').first().isDisabled());await page.locator('#drive-end').click();assert(await feedback.isHidden());assert.deepEqual(errors,[]);await context.close();
@@ -281,18 +363,18 @@ try{
   const {context,page,control,errors}=await prepare(browser,viewport);
   assert(await page.locator('#welcome').isHidden());await optimize(page);
   let order=await textOrder(page);assert.match(order[0],/Public Library/);assert.match(order.at(-1),/Art Museum/);
-  const chosen=page.locator('.route-choice').filter({has:page.locator('button:disabled')});assert.match(await chosen.innerText(),/Shortest modeled driving distance/);
+  await details(page,'route-comparison-details');const chosen=page.locator('.route-choice').filter({has:page.locator('button:disabled')});assert.match(await chosen.innerText(),/Shortest modeled driving distance/);
   const metricTime=(await page.locator('#metrics .metric').nth(1).innerText()).split('\n')[0];assert((await chosen.innerText()).includes(metricTime));assert.match(await page.locator('#route-detail').innerText(),/Totals use the mapped itinerary/);
   assert.equal(control.calls.filter(x=>x.includes('/route/')).length,2); // no third draw request
-  await page.locator('#share-text').click();let copied=await page.evaluate(()=>window.__copied);assert(!copied.includes('Private start')&&!copied.includes('Private finish')&&!copied.includes('PRIVATE NOTE'));
-  await page.locator('#share-link').click();const share=await page.evaluate(()=>window.__copied);assert(share.includes('#tour='));
-  await page.locator('#share-endpoints').check();await page.locator('#share-text').click();assert.match(await page.evaluate(()=>window.__copied),/Private start/);
+  await shareDetails(page);await page.locator('#share-text').click();let copied=await page.evaluate(()=>window.__copied);assert(!copied.includes('Private start')&&!copied.includes('Private finish')&&!copied.includes('PRIVATE NOTE'));
+  await shareDetails(page);await page.locator('#share-link').click();const share=await page.evaluate(()=>window.__copied);assert(share.includes('#tour='));
+  await page.locator('#share-endpoints').check();await shareDetails(page);await page.locator('#share-text').click();assert.match(await page.evaluate(()=>window.__copied),/Private start/);
   await page.locator('.itinerary-row').first().locator('button').last().click();await page.waitForFunction(()=>document.querySelector('#route-detail').textContent.includes('Manually arranged'));
   assert.equal(await page.locator('.itinerary-row').count(),4);
   const links=await page.locator('#nav-buttons a').evaluateAll(links=>links.map(a=>a.href));
   for(const link of links){const u=new URL(link);assert(['maps.apple.com','www.google.com'].includes(u.hostname));}
   pass(`${viewport.width}px: nationwide distance selection, cached geometry, manual order, sharing privacy, Maps links`);
-  await page.locator('#mode').selectOption('duration');await optimize(page);order=await textOrder(page);assert.match(order[0],/Art Museum/);
+  await stage(page,'plan');await page.locator('#mode').selectOption('duration');await optimize(page);order=await textOrder(page);assert.match(order[0],/Art Museum/);
   // The current matrix is cached, so fail the next (smaller) reroute.
   await page.locator('#drive-start').click();assert(await page.locator('body').evaluate(e=>e.classList.contains('driving')));
   control.fail=true;await page.locator('#drive-skip').click();await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Could not reroute'));
@@ -308,25 +390,25 @@ try{
   await page.goto(share);await page.locator('#shared-import').click();assert.equal(await page.locator('#project-picker option').count(),2);assert.equal(await page.locator('#start-input').inputValue(),'');assert.equal(await page.locator('.stop').count(),4);
   await page.locator('#project-picker').selectOption('t1');assert.equal(await page.locator('.stop').count(),4);
   // Import into the actual project using an explicit city, with formatting duplicates.
-  await page.locator('#bulk-toggle').click();await page.locator('#bulk-text').fill('Example A — 100 Test Street, Portland, OR\nExample B — 100 Test St, Portland OR\nExample C — 102 Test Ave, Portland, OR');await page.locator('#import-preview').click();assert.equal(await page.locator('.import-review-row').count(),2);await page.locator('#import-confirm').click();assert.equal(await page.locator('.stop').count(),6);
+  await bulk(page);await page.locator('#bulk-text').fill('Example A — 100 Test Street, Portland, OR\nExample B — 100 Test St, Portland OR\nExample C — 102 Test Ave, Portland, OR');await page.locator('#import-preview').click();assert.equal(await page.locator('.import-review-row').count(),2);await page.locator('#import-confirm').click();assert.equal(await page.locator('.stop').count(),6);
   // Malformed restore is rejected before confirmation or mutation.
   stored=await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2'));
-  await page.locator('#projects-import').setInputFiles({name:'broken.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({version:2,projects:[{}]}))});await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Could not restore'));
+  await details(page,'project-tools');await page.locator('#projects-import').setInputFiles({name:'broken.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({version:2,projects:[{}]}))});await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Could not restore'));
   assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),stored);
-  page.once('dialog',dialog=>dialog.accept());await page.locator('#projects-import').setInputFiles({name:'valid-backup.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({...JSON.parse(stored),version:2}))});await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Projects restored successfully'));assert.equal(await page.locator('.stop').count(),6);
+  page.once('dialog',dialog=>dialog.accept());await details(page,'project-tools');await page.locator('#projects-import').setInputFiles({name:'valid-backup.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({...JSON.parse(stored),version:2}))});await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Projects restored successfully'));assert.equal(await page.locator('.stop').count(),6);
   pass(`${viewport.width}px: safe shared import, independent projects, import deduplication, atomic restore validation`);
-  await page.locator('#bulk-toggle').click();await page.locator('#import-file').setInputFiles({name:'review.csv',mimeType:'text/csv',buffer:Buffer.from('Name,Address\nA,"301 New St, Portland, OR"\nB,"302 New St, Portland, OR"\nBad,no numbered address')});
+  await bulk(page);await page.locator('#import-file').setInputFiles({name:'review.csv',mimeType:'text/csv',buffer:Buffer.from('Name,Address\nA,"301 New St, Portland, OR"\nB,"302 New St, Portland, OR"\nBad,no numbered address')});
   assert.equal(await page.locator('.import-review-row').count(),2);assert.match(await page.locator('.import-diagnostics summary').innerText(),/1 ignored/);
   await page.locator('.import-review-row').first().locator('input[aria-label^="Display name"]').fill('Edited label');await page.locator('.import-review-row').nth(1).locator('input[type=checkbox]').uncheck();
   await page.locator('#import-mode').selectOption('replace');assert.equal(await page.locator('.import-review-row').first().locator('input[aria-label^="Display name"]').inputValue(),'Edited label');assert.equal(await page.locator('.import-review-row').nth(1).locator('input[type=checkbox]').isChecked(),false);
   await page.locator('#import-mode').selectOption('append');await page.locator('#import-select-none').click();assert(await page.locator('#import-confirm').isDisabled());await page.locator('#import-select-all').click();assert.match(await page.locator('#import-review-summary').innerText(),/2 selected/);
   const firstAddress=page.locator('.import-review-row').first().locator('input[aria-label^="Street address"]');await firstAddress.fill(displays[0].address);assert.match(await page.locator('#import-review-summary').innerText(),/1 already listed/);assert(await page.locator('.import-review-row').first().locator('input[type=checkbox]').isDisabled());await firstAddress.fill('301 New St, Portland, OR');await page.locator('.import-review-row').nth(1).locator('input[type=checkbox]').uncheck();await page.locator('#import-confirm').click();assert.equal(await page.locator('.stop').count(),7);
   pass(`${viewport.width}px: rejected-row diagnostics, stable edited preview across modes, bulk selection and append duplicate safety`);
-  await page.locator('#directory-toggle').click();await page.waitForFunction(()=>document.querySelector('#directory-status').textContent.includes('31 catalog entries'));
+  await browse(page);await page.waitForFunction(()=>document.querySelector('#directory-status').textContent.includes('31 catalog entries'));
   await page.locator('#directory-sort').selectOption('year');assert.match(await page.locator('.directory-row').first().innerText(),/2026.*Check operation/);await page.locator('#directory-year').selectOption('2025');assert.match(await page.locator('.directory-row').first().innerText(),/Archive/);assert.match(await page.locator('.directory-row').first().innerText(),/Source reviewed/);
   await page.locator('#directory-select-visible').click();assert.match(await page.locator('#directory-summary').innerText(),/12 selected/);await page.locator('#directory-year').selectOption('2026');assert.match(await page.locator('#directory-summary').innerText(),/12 outside/);const currentListings=await page.locator('.directory-row').count();await page.locator('#directory-select-visible').click();assert.match(await page.locator('#directory-summary').innerText(),new RegExp(`${12+currentListings} selected`));await page.locator('#directory-select-visible').click();assert.match(await page.locator('#directory-summary').innerText(),/12 selected/);await page.locator('#directory-clear-selection').click();
   const firstCheckbox=page.locator('.directory-row input').first();await firstCheckbox.check();assert.equal(await firstCheckbox.getAttribute('id'),await page.evaluate(()=>document.activeElement.id));
-  await page.locator('#submission-toggle').click();await page.locator('#submit-address').fill('PRIVATE ADDRESS');await page.locator('#submit-source').fill('https://private.example');await page.locator('#submit-type').selectOption('removal');await page.locator('#submit-name').fill('indy-halloween-01');assert(await page.locator('#submit-address').isDisabled());await page.evaluate(()=>{window.open=url=>{window.__suggestion=url;return null;};});page.once('dialog',dialog=>dialog.accept());await page.locator('#submission-form button[type=submit]').click();const suggestion=new URL(await page.evaluate(()=>window.__suggestion));assert.match(suggestion.searchParams.get('title'),/Removal request/);assert(!suggestion.searchParams.get('body').includes('PRIVATE ADDRESS'));
+  await directoryMore(page);await page.locator('#submission-toggle').click();await page.locator('#submit-address').fill('PRIVATE ADDRESS');await page.locator('#submit-source').fill('https://private.example');await page.locator('#submit-type').selectOption('removal');await page.locator('#submit-name').fill('indy-halloween-01');assert(await page.locator('#submit-address').isDisabled());await page.evaluate(()=>{window.open=url=>{window.__suggestion=url;return null;};});page.once('dialog',dialog=>dialog.accept());await page.locator('#submission-form button[type=submit]').click();const suggestion=new URL(await page.evaluate(()=>window.__suggestion));assert.match(suggestion.searchParams.get('title'),/Removal request/);assert(!suggestion.searchParams.get('body').includes('PRIVATE ADDRESS'));
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   pass(`${viewport.width}px: seasonal directory labels, source review dates, filtered bulk selection, keyboard focus and ID-only removal drafts`);
   assert.deepEqual(errors,[]);await context.close();
@@ -334,17 +416,17 @@ try{
  // Full outage keeps an explicit rough fallback with no invented driving time.
  for(const viewport of [{width:1366,height:900},{width:390,height:844}]){
   const {context,page,errors}=await prepare(browser,viewport);
-  await page.locator('.stop').first().locator('.stop-preferences button').first().click();await page.locator('.stop').first().locator('.rating-select').selectOption('5');await page.locator('.stop').first().locator('summary').click();await page.locator('.stop').first().locator('button[title="Mark this house visited on this drive"]').click();await page.locator('.stop').nth(1).locator('input[type=checkbox]').uncheck();
+  await planDisplays(page);await page.locator('.stop').first().locator('.stop-preferences button').first().click();await page.locator('.stop').first().locator('.rating-select').selectOption('5');await page.locator('.stop').first().locator('summary').click();await page.locator('.stop').first().locator('button[title="Mark this house visited on this drive"]').click();await page.locator('.stop').nth(1).locator('input[type=checkbox]').uncheck();
   const [download]=await Promise.all([page.waitForEvent('download'),page.locator('#export-json').click()]);const exported=await readFile(await download.path());
-  await page.locator('#project-new').click();await page.locator('#project-name').fill('Round trip');await page.locator('#project-holiday').selectOption('Christmas');await page.locator('#project-create-form button[type=submit]').click();await page.locator('#bulk-toggle').click();await page.locator('#import-file').setInputFiles({name:'stops.json',mimeType:'application/json',buffer:exported});await page.locator('#import-confirm').click();
+  await page.locator('#project-new').click();await page.locator('#project-name').fill('Round trip');await page.locator('#project-holiday').selectOption('Christmas');await page.locator('#project-create-form button[type=submit]').click();await bulk(page);await page.locator('#import-file').setInputFiles({name:'stops.json',mimeType:'application/json',buffer:exported});await page.locator('#import-confirm').click();
   assert.equal(await page.locator('#stop-count').innerText(),'3/4');const restored=await page.evaluate(()=>{const p=JSON.parse(localStorage.getItem('glowroute:projects:v2'));return p.projects.find(d=>d.id===p.activeId).state;});
   const first=restored.displays.find(d=>d.name==='Denver Art Museum');assert.equal(first.favorite,true);assert.equal(first.rating,5);assert.equal(first.mustSee,true);assert.equal(first.visited,true);assert.equal(first.visitNotes,'PRIVATE NOTE');assert.equal(first.approved,true);assert.equal(first.geoSource,'manual');assert.notEqual(first.id,displays[0].id);
-  await page.locator('#bulk-toggle').click();await page.locator('#bulk-text').fill(Array.from({length:71},(_,i)=>`${301+i} New St, Portland, OR`).join('\n'));await page.locator('#import-preview').click();assert.equal(await page.locator('.import-review-row').count(),71);assert(await page.locator('#import-confirm').isDisabled());await page.locator('#import-select-none').click();await page.locator('.import-review-row input[type=checkbox]').nth(0).check();await page.locator('.import-review-row input[type=checkbox]').nth(1).check();await page.locator('#import-confirm').click();assert.equal(await page.locator('.stop').count(),6);
+  await bulk(page);await page.locator('#bulk-text').fill(Array.from({length:71},(_,i)=>`${301+i} New St, Portland, OR`).join('\n'));await page.locator('#import-preview').click();assert.equal(await page.locator('.import-review-row').count(),71);assert(await page.locator('#import-confirm').isDisabled());await page.locator('#import-select-none').click();await page.locator('.import-review-row input[type=checkbox]').nth(0).check();await page.locator('.import-review-row input[type=checkbox]').nth(1).check();await page.locator('#import-confirm').click();assert.equal(await page.locator('.stop').count(),6);
   assert.deepEqual(errors,[]);await context.close();pass(`${viewport.width}px: actual export/import preserves personal metadata and manual pins; oversized list reduced to a valid subset`);
  }
  {
   const {context,page,control,errors}=await prepare(browser,{width:390,height:844});control.importDelay=700;
-  await page.locator('#bulk-toggle').click();await page.locator('#website-url').fill('https://listing.example.test/displays');const requested=page.waitForRequest('https://listing.example.test/displays');await page.locator('#website-load').click();await requested;await page.locator('#project-new').click();await page.locator('#project-name').fill('Different drive');await page.locator('#project-create-form button[type=submit]').click();await page.waitForTimeout(900);
+  await bulk(page);await importSource(page);await page.locator('#website-url').fill('https://listing.example.test/displays');const requested=page.waitForRequest('https://listing.example.test/displays');await page.locator('#website-load').click();await requested;await page.locator('#project-new').click();await page.locator('#project-name').fill('Different drive');await page.locator('#project-create-form button[type=submit]').click();await page.waitForTimeout(900);
   assert(await page.locator('#bulk-panel').isHidden());assert.equal(await page.locator('.stop').count(),0);assert.match(await page.locator('#status').innerText(),/Created Different drive/);assert.deepEqual(errors,[]);await context.close();pass('interrupted website import cannot reopen or populate a different project');
  }
  {
@@ -352,7 +434,7 @@ try{
   await page.locator('details[aria-label="Optional time budget"] summary').click();await page.locator('#budget-enabled').check();await page.locator('#budget-minutes').fill('20');await optimize(page);
   assert.match(await page.locator('#route-detail').innerText(),/Time-budget selection/);assert.match(await page.locator('#itinerary').innerText(),/Art Museum/);
   const count=await page.locator('.itinerary-row').count();assert(count>0&&count<4);
-  await page.locator('#preset').selectOption('top5');assert.equal(await page.locator('#stop-count').innerText(),'1/4');
+  await planDisplays(page);await page.locator('#preset').selectOption('top5');assert.equal(await page.locator('#stop-count').innerText(),'1/4');
   let gpsCalls=0;await page.exposeFunction('__gpsRequested',()=>{gpsCalls++;});
   await page.evaluate(()=>Object.defineProperty(navigator,'geolocation',{configurable:true,value:{getCurrentPosition:(resolve,reject)=>{window.__gpsRequested();reject({code:1});}}}));
   assert.equal(gpsCalls,0);await page.locator('#use-location').click();await page.waitForFunction(()=>document.querySelector('#location-status').textContent.includes('denied'));assert.equal(await page.locator('#start-input').inputValue(),'Private start');
@@ -364,14 +446,14 @@ try{
  }
  {
   const {context,page,errors}=await prepare(browser,{width:390,height:844},{saved:false});
-  await page.locator('#welcome-sample').click();await page.locator('.stop-actions summary').first().click();
+  await page.locator('#welcome-sample').click();await planDisplays(page);await page.locator('.stop-actions summary').first().click();
   page.once('dialog',dialog=>dialog.accept());await page.locator('.stop-menu button[aria-label^="Remove"]').first().click();assert.equal(await page.locator('.stop').count(),24);
-  await page.locator('#project-duplicate').click();await page.locator('#project-create-form button[type=submit]').click();assert.equal(await page.locator('.stop').count(),24);assert.equal(await page.locator('.verify-season').count(),24);
+  await details(page,'project-tools');await page.locator('#project-duplicate').click();await page.locator('#project-create-form button[type=submit]').click();assert.equal(await page.locator('.stop').count(),24);assert.equal(await page.locator('.verify-season').count(),24);
   await page.locator('#project-new').click();await page.locator('#project-name').fill('Directory review');await page.locator('#project-holiday').selectOption('Halloween');await page.locator('#project-year').fill('2026');await page.locator('#project-create-form button[type=submit]').click();
-  await page.locator('#directory-toggle').click();await page.waitForFunction(()=>document.querySelector('#directory-status').textContent.includes('31 catalog entries'));
+  await browse(page);await page.waitForFunction(()=>document.querySelector('#directory-status').textContent.includes('31 catalog entries'));
   await page.locator('#directory-season').selectOption('Halloween');await page.locator('#directory-search').fill('Ritter');assert((await page.locator('.directory-row').count())>0);await page.locator('.directory-row input').first().check();await page.locator('#directory-review-selected').click();
   page.once('dialog',dialog=>dialog.accept());await page.locator('#directory-apply').click();assert.equal(await page.locator('.stop').count(),1);assert.equal(await page.locator('.verify-season').count(),1);
-  await page.locator('#bulk-toggle').click();await page.locator('#website-url').fill('https://indywithkids.com/christmas-lights-list-indianapolis-central-indiana/');await page.locator('#website-load').click();assert.equal(await page.locator('.import-review-row').count(),12);assert.match(await page.locator('#bulk-preview').innerText(),/2025/);
+  await bulk(page);await importSource(page);await page.locator('#website-url').fill('https://indywithkids.com/christmas-lights-list-indianapolis-central-indiana/');await page.locator('#website-load').click();assert.equal(await page.locator('.import-review-row').count(),12);assert.match(await page.locator('#bulk-preview').innerText(),/2025/);
   await page.locator('#import-mode').selectOption('replace');await page.locator('.import-review-row input[type=checkbox]').first().uncheck();page.once('dialog',dialog=>dialog.accept());await page.locator('#import-confirm').click();assert.equal(await page.locator('.stop').count(),11);
   assert.deepEqual(errors,[]);await context.close();pass('sample removal, next-season duplication, searchable directory review, historical website snapshot and confirmed replacement');
  }
@@ -384,13 +466,13 @@ try{
   assert.match((await textOrder(page))[0],/Public Library/);assert.match(await page.locator('#route-detail').innerText(),/matrix legs/);assert.equal(await page.locator('.route-choice button:disabled').count(),0);assert.equal(control.calls.filter(url=>url.includes('/route/')).length,2);assert.deepEqual(errors,[]);await context.close();pass('preferred geometry failure: distance order retained, comparison not misselected, no redundant failed draw request');
  }
  {
-  const {context,page,control,errors}=await prepare(browser,{width:1366,height:900});control.delay=400;await page.locator('#optimize').click();await page.waitForFunction(()=>document.querySelector('#optimize').disabled);await page.locator('#mode').selectOption('duration');await page.waitForTimeout(600);assert(await page.locator('#results').isHidden());assert(await page.locator('#optimize').isEnabled());assert.deepEqual(errors,[]);await context.close();pass('interrupted routing: stale response cannot overwrite changed planning state');
+  const {context,page,control,errors}=await prepare(browser,{width:1366,height:900});control.delay=400;await page.locator('#optimize').click();await page.waitForFunction(()=>document.querySelector('#optimize').disabled);await stage(page,'plan');await page.locator('#mode').selectOption('duration');await page.waitForTimeout(600);assert(await page.locator('#results').isHidden());assert(await page.locator('#optimize').isEnabled());assert.deepEqual(errors,[]);await context.close();pass('interrupted routing: stale response cannot overwrite changed planning state');
  }
  for(const options of [{storageFail:true},{corrupt:true}]){
-  const {context,page,errors}=await prepare(browser,{width:390,height:844},options);await page.locator('.stop-preferences button').first().click();assert(await page.locator('#storage-status').isVisible());if(options.corrupt)assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),'BROKEN JSON');assert.deepEqual(errors,[]);await context.close();pass(`storage ${options.corrupt?'corruption preserved':'quota failure announced persistently'}`);
+  const {context,page,errors}=await prepare(browser,{width:390,height:844},options);await planDisplays(page);await page.locator('.stop-preferences button').first().click();assert(await page.locator('#storage-status').isVisible());if(options.corrupt)assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),'BROKEN JSON');assert.deepEqual(errors,[]);await context.close();pass(`storage ${options.corrupt?'corruption preserved':'quota failure announced persistently'}`);
  }
  {
-  const {context,page,errors}=await prepare(browser,{width:390,height:844},{saved:false});assert(await page.locator('#welcome').isVisible());await page.locator('#welcome-own').click();await page.locator('#project-name').fill('Our Christmas outing');await page.locator('#project-holiday').selectOption('Christmas');await page.locator('#project-create-form button[type=submit]').click();assert(await page.locator('.empty-state').isVisible());assert.equal(await page.locator('#start-input').inputValue(),'');assert.deepEqual(errors,[]);await context.close();pass('first visit: custom holiday drive, empty state, no inherited Indianapolis endpoints');
+  const {context,page,errors}=await prepare(browser,{width:390,height:844},{saved:false});assert(await page.locator('#welcome').isVisible());await page.locator('#welcome-own').click();await page.locator('#project-name').fill('Our Christmas outing');await page.locator('#project-holiday').selectOption('Christmas');await page.locator('#project-create-form button[type=submit]').click();assert(await page.locator('#stage-discover').isVisible());assert.equal(await page.locator('.stop').count(),0);assert.equal(await page.locator('#start-input').inputValue(),'');assert.deepEqual(errors,[]);await context.close();pass('first visit: custom holiday drive, discovery empty state, no inherited Indianapolis endpoints');
  }
  // Actual service worker lifecycle (external network still blocked).
  {

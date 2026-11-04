@@ -23,8 +23,8 @@ try{
  if(!await page.locator('#results').isVisible())throw Error(await page.locator('#status').innerText());
  await page.waitForFunction(()=>!!window.L);await page.waitForTimeout(2500);
  await mkdir(resolve(root,'docs/screenshots'),{recursive:true});
- await page.evaluate(()=>{const controls=document.querySelector('.controls');controls.scrollTop=document.querySelector('#results').offsetTop-controls.offsetTop-16;window.scrollTo(0,0);});await page.screenshot({path:resolve(root,'docs/screenshots/desktop-route.png')});
- await page.setViewportSize({width:390,height:844});await page.locator('#drive-start').click();await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:resolve(root,'docs/screenshots/mobile-drive.png'),fullPage:true});
+ await page.locator('#workflow-drive').click();await page.screenshot({path:resolve(root,'docs/screenshots/desktop-route.png')});
+ await page.setViewportSize({width:390,height:844});await page.locator('#drive-start').click();await page.locator('#drive-rating label').nth(4).click();await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:resolve(root,'docs/screenshots/mobile-drive.png'),fullPage:true});
  console.log('Captured genuine app screenshots with real Leaflet/OSM mapping and OSRM routing. Public landmarks are illustrative, not holiday display listings.');
  await context.close();
 }finally{await browser.close();await new Promise(r=>server.close(r));}
