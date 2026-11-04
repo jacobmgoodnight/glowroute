@@ -8,11 +8,11 @@ GlowRoute is a **free, open-source holiday display route planner** that helps yo
 
 Built for phones and desktops. No account required.
 
-![GlowRoute v1.5 desktop route summary and map](docs/screenshots/desktop-route.png)
+![GlowRoute v1.8 Drive stage with route summary and map](docs/screenshots/desktop-route.png)
 
 *Genuine browser capture with real OSM mapping and OSRM routing. Public Denver landmarks illustrate the workflow; they are not advertised holiday display listings.*
 
-<p align="center"><img src="docs/screenshots/mobile-drive.png" width="300" alt="GlowRoute mobile Live Drive view showing the next public landmark, progress, Maps navigation, visited and skip actions" /></p>
+<p align="center"><img src="docs/screenshots/mobile-drive.png" width="300" alt="GlowRoute v1.8 mobile Live Drive showing the next public landmark, navigation, progress, visit and skip actions, and star ratings" /></p>
 
 **[🚗 Open GlowRoute](https://jacobmgoodnight.github.io/glowroute/)** · [View source](https://github.com/jacobmgoodnight/glowroute) · [Report an issue or suggest a display](https://github.com/jacobmgoodnight/glowroute/issues)
 
@@ -20,11 +20,13 @@ Built for phones and desktops. No account required.
 
 **New in v1.5:** nationwide routing, dependable time/distance selection, cancellable and cached routing requests, a simpler first visit, focused mobile driving with resume, safer backups/sharing and reliable PWA updates. Read the [changelog](CHANGELOG.md), [audit and validation report](docs/AUDIT-v1.5.md), or [prioritized roadmap](ROADMAP.md).
 
-**New in v1.6:** clearer seasonal/source context, directory sorting and filtered bulk selection, import diagnostics and stable review edits, plus personal preferences preserved in stop-list JSON round-trips. Follow-up patches add an adjustable desktop planner/map divider and current-display ratings, favorites and private notes in Live Drive Mode. See the [v1.6 scope and validation](docs/RELEASE-v1.6.md). The screenshots above were captured during v1.5.
+**New in v1.6:** clearer seasonal/source context, directory sorting and filtered bulk selection, import diagnostics and stable review edits, plus personal preferences preserved in stop-list JSON round-trips. Follow-up patches add an adjustable desktop planner/map divider and current-display ratings, favorites and private notes in Live Drive Mode. See the [v1.6 scope and validation](docs/RELEASE-v1.6.md).
 
 **New in v1.7:** nearby discovery from known pins, reviewed tour suggestions, optional departure/arrival schedules, per-display viewing times, richer source facts and filters, and an authorized-feed review pipeline. No new services, accounts or runtime dependencies. See the [code audit and release details](docs/RELEASE-v1.7.md), [feed authorization contract](feeds/README.md), and [Explorer backup/retirement checklist](docs/RETIREMENT.md).
 
 **New in v1.7.1:** edit an optimized drive directly from its numbered map pins: change the visit order, remove a stop from the drive, or correct its pin. See the [workflow review and next priorities](docs/UX-REVIEW-v1.7.1.md).
+
+**New in v1.8:** **Discover → Plan → Drive** gives the existing features a clearer home, with optional tools collapsed until needed. Optimization opens the itinerary for review; starting Live Drive remains a separate choice. See the [workflow release notes](docs/RELEASE-v1.8.md).
 
 ## ✨ What can GlowRoute do?
 
@@ -44,10 +46,12 @@ GlowRoute works for **your own neighborhood or any area where you have display a
 ## 🚀 Start planning in a few steps
 
 1. **Open [GlowRoute](https://jacobmgoodnight.github.io/glowroute/)** on your phone or computer.
-2. **Choose _Explore a sample drive_ or _Plan my own drive_.** Existing users go straight to their saved projects. New custom drives start with blank endpoints; add full addresses from any city or browse the **Display directory**.
-3. **Set Start and Finish.** Optionally use **Use my location** for this tab only; your entered starting address is retained. Choose displays, mark important stops **Must see**, and open the optional time budget if needed.
-4. Select **Optimize my route**. Check the route, map pins and suggested order before you go.
-5. Open a navigation leg in **Apple Maps or Google Maps**, or start **Live Drive Mode** for a focused next-stop view. A passenger or parked driver can mark visits, skip/reroute, retry without GPS and return to the full itinerary. After a reload, **Resume interrupted drive** uses saved remaining stops and your last confirmed display or saved starting address.
+2. **Discover:** choose _Explore a sample drive_ or _Plan my own drive_, then browse listings, add a full address or paste/import a list. Empty new drives open Discover; returning saved drives open Plan. The saved-drive picker and **+ New drive** remain available across stages.
+3. **Plan:** expand the saved-display selection to choose stops and mark important ones **Must see**. Set **Start and Finish**, choose time or distance, and expand the optional budget or departure schedule if needed. **Use my location** is optional for this tab; your entered starting address is retained.
+4. Select **Optimize my route**. **Drive** opens the itinerary for review; check the summary, map pins and suggested order. Optimization does not start a Live Drive session. You can switch stages freely without discarding entered fields or a reviewed import.
+5. **Drive:** open a navigation leg in **Apple Maps or Google Maps**, or choose **Start drive** for a focused next-stop view. A passenger or parked driver can mark visits, skip/reroute, retry without GPS and return to the full itinerary. After a reload, **Resume interrupted drive** uses saved remaining stops and your last confirmed display or saved starting address.
+
+Route comparisons and sharing are expandable in Drive. Saved-drive maintenance, backup/restore, reset and secondary source tools remain available behind optional controls. Switching stages alone does not save changes, load a directory, request GPS or calculate a route. Your current stage is only a view in this tab.
 
 **Tip:** You can review imported addresses and edit a map pin before routing. Some residential addresses are geocoded only approximately.
 
@@ -60,7 +64,7 @@ After **Optimize my route**, choose **Edit stops on map** or tap a numbered stop
 - **Adjust map pin** lets you tap a corrected location, then choose **Save pin** or **Cancel**. Saving retains the address and current visit order while updating road estimates.
 - **Undo last edit** reverses the latest removal or reorder while it is available. It is not a pin-edit history.
 
-On phones, map editing opens a focused map; **Back to itinerary** returns to the route. Route links and estimates update after edits; a routing failure is shown rather than reporting stale road estimates as current. Manual changes are your chosen order; optimize again when you want new optimized alternatives. During Live Drive, use the existing **Visited** and **Skip & reroute** actions instead of map editing.
+On phones, map editing opens a focused map; its **Back** action returns to the stage you came from. Route links and estimates update after edits; a routing failure is shown rather than reporting stale road estimates as current. Manual changes are your chosen order; optimize again when you want new optimized alternatives. During Live Drive, use the existing **Visited** and **Skip & reroute** actions instead of map editing.
 
 **Desktop layout:** Drag the divider between the planner and map to resize them; your browser remembers the width. Focus the divider and use Left/Right arrows (Shift for larger steps), Home/End for the limits, or Enter to reset. Double-click also resets; Escape cancels a drag. Phones keep the stacked layout.
 
@@ -68,9 +72,9 @@ On phones, map editing opens a focused map; **Back to itinerary** returns to the
 
 ### Bring a list of your own displays
 
-Open **Bulk import / paste list** and paste addresses from a public holiday guide or your notes. You can also use a CSV/TSV/TXT file or a GlowRoute JSON export. Review names, addresses and duplicates before adding them; addresses aren't checked as operating displays automatically.
+In **Discover**, open **Paste / import addresses** and paste addresses from a public holiday guide or your notes. You can also use a CSV/TSV/TXT file or a GlowRoute JSON export. **Source details & website imports** is optional and expandable. Review names, addresses and duplicates before adding them; addresses aren't checked as operating displays automatically.
 
-**Indy with Kids / FrightMaps:** Use **Discover displays → Load Explorer's older discoveries** for the larger saved historical file, or **Paste newer website listings** for a fresh manual copy. Review the original source season and choose **Add new displays and skip duplicates** when repeating a paste weekly. FrightMaps city-only references cannot route. The old website button loads small Indy samples, not the full live guide. See the [step-by-step import guide](docs/IMPORTING-LISTINGS.md).
+**Indy with Kids / FrightMaps:** In **Discover → Browse displays → More sources & contributions**, use **Load Explorer's older discoveries** for the larger saved historical file, or **Paste newer website listings** for a fresh manual copy. Review the original source season and choose **Add new displays and skip duplicates** when repeating a paste weekly. FrightMaps city-only references cannot route. The old website button loads small Indy samples, not the full live guide. See the [step-by-step import guide](docs/IMPORTING-LISTINGS.md).
 
 For abbreviated street-only lists, enter the optional city/state. Complete addresses keep their supplied locality. Review ignored-record explanations, use **Select all eligible** or **Deselect all**, and switch between Add/Replace without losing edited rows. Append mode skips existing addresses and preserves their private data. Large lists can be reduced to a subset within the 70-display project limit; preview up to 500 unique addresses at once.
 
@@ -94,7 +98,7 @@ The public directory lives in [`directory/catalog.json`](directory/catalog.json)
 
 ### Discover nearby and suggest a tour
 
-Open **Discover displays → Browse → Nearby search & filters**. Set a search point using an address/coordinates, explicit GPS request or a map click. Choose a radius and **Nearest known pin**, then narrow the holiday/year or optional category/admission/visit-style/music/family filters. Distances are approximate geographic miles, not road miles. Filtered known pins correspond to the list; **Show on map** and popup **Show listing** connect them.
+In **Discover**, open **Browse displays → Nearby search & filters**. Set a search point using an address/coordinates, explicit GPS request or a map click. Choose a radius and **Nearest known pin**, then narrow the holiday/year or optional category/admission/visit-style/music/family filters. Distances are approximate geographic miles, not road miles. Filtered known pins correspond to the list; **Show on map** and popup **Show listing** connect them.
 
 The list includes this drive's saved displays. The existing public catalog has no supplied coordinates; address-only listings stay searchable, but cannot appear in radius results or seed a suggested tour. Review and manually pin saved stops, or import an authorized snapshot with reliable street-level coordinates. The app does not geocode hundreds of directory records. City-only records remain source references; historical records never become current-year confirmations.
 
@@ -104,7 +108,7 @@ Choose **Suggest a nearby tour** to review up to 20 eligible stops for this driv
 
 ### Plan an optional visit schedule
 
-Expand **Departure & visit schedule**, enter departure and its IANA timezone (defaults to this browser's timezone), and optimize. The itinerary estimates each arrival/departure and finish, plus driving versus viewing totals. It uses mapped road legs when supplied or labels road-matrix estimates. Traffic, parking and delays can change these estimates; rough straight-line routes cannot provide arrival times.
+In **Plan**, expand **Departure & visit schedule**, enter departure and its IANA timezone (defaults to this browser's timezone), and optimize. The itinerary estimates each arrival/departure and finish, plus driving versus viewing totals. It uses mapped road legs when supplied or labels road-matrix estimates. Traffic, parking and delays can change these estimates; rough straight-line routes cannot provide arrival times.
 
 Use the default viewing time under **Time budget & viewing time** or a per-stop override under **Details & notes**. An explicitly supplied display duration takes precedence over the default; your override takes precedence over both. Viewing-time changes update the schedule immediately; re-optimize to reconsider which stops fit the budget. Listed opening windows use the display's own timezone, including overnight hours. Unknown, incomplete, conflicting or old-season schedules stay unknown; unverified source hours are qualified. The app warns about expected closures without dropping stops. It does not solve opening-window optimization. During Live Drive reroutes, remaining estimates start at the reroute time. DST gaps are rejected; repeated departure times offer first/second occurrence.
 

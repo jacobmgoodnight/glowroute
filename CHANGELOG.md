@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.8.0 — Discover, Plan and Drive
+
+- Group the existing interface into three keyboard-accessible stages: discover/add/import displays, plan the selection and endpoints, then review/navigate/drive. Returning saved drives open Plan; empty new drives open Discover.
+- Open Drive after optimization for itinerary review without starting Live Drive. An explicit stage change during pending work takes precedence over automatic navigation. Viewing a stage alone does not mutate saved data or request mapping services; stage state stays in this tab.
+- Keep the saved-drive picker, New drive, resume, shared-itinerary review and storage/update/status notices accessible across stages. Retain Live Drive recovery controls when resume fails before a route is available. Map Back returns to the invoking stage.
+- Initialize the map from valid saved endpoint or selected-display pins and fit known locations, so saved drives outside Indianapolis open around their own area. Retain the Indianapolis sample fallback when no location is known.
+- Collapse saved-drive maintenance/backups/reset, secondary source tools, website-source fields, saved-display selection, route comparisons and sharing while retaining explicit access. Keep optional budget/schedule and personal display details expandable.
+- Preserve map editing, ratings, notes, favorites, privacy choices and PWA updates without storage migrations, new services or runtime dependencies. See [scope and validation status](docs/RELEASE-v1.8.md).
+
 ## 1.7.1 — Edit the drive from its map
 
 - Open numbered route pins to move a display earlier/later, remove it from the current drive, or correct its map location. Add **Edit stops on map** and a focused mobile map with **Back to itinerary**.

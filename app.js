@@ -13,6 +13,7 @@ import {validateCandidates,sourceFreshness} from './candidates.mjs';
 import {renderSchedule} from './planner-ui.mjs';
 import {parseSourcePaste,sourceKind,EXPLORER_SNAPSHOT_URL} from './source-paste.mjs';
 import {editRouteStops,mapPinLocation} from './route-edits.mjs';
+import {initWorkflow} from './workflow.mjs';
 
 const $=id=>document.getElementById(id);
 const defaultTop5=['ouija','lady','mcblackton','studio','circus'];
@@ -45,6 +46,7 @@ let driveTotal=0,driveAnchorId=null;
 let operation=null,drawRevision=0,gpsStart=null,temporaryFinish=null;
 let controlsProjectId=null;
 let routeEditUndo=null,mapEditSession=0;
+let workflow=null,mapStageOrigin='plan';
 const routePopups=new Map();
 const routing=createRoutingClient();
 function cancelOperation(){operation?.abort();operation=null;drawRevision++;busy=false;$('optimize').disabled=false;}
@@ -54,8 +56,26 @@ function finishOperation(token){if(operation===token){busy=false;operation=null;
 function status(message,tone='') {const el=$('status');el.textContent=message;el.className='status '+tone;}
 function mapLabel(message){$('map-label').textContent=message;}
 function getSelected(){return state.displays.filter(x=>state.selected.has(x.id));}
-function showResults(visible){$('results').classList.toggle('hidden',!visible)}
-function invalidate(){cancelOperation();if(pinTarget!==null)endPin();leaveMapEditing(false);clearRouteUndo();driveActive=false;driveRemainingIds=[];driveAnchor=null;driveFinish=null;document.body.classList.remove('driving');currentRoute=null;lastMatrix=null;currentPoints=null;updateDrivePanel();routeLayer?.clearLayers();showResults(false);$('estimate').classList.add('hidden');updatePins();}
+function showResults(visible){$('results').classList.toggle('hidden',!visible);updateWorkflowState();}
+function showStage(stage,options={}){workflow?.show(stage,options);}
+function updateWorkflowState(){
+ $('drive-empty').classList.toggle('hidden',!!currentRoute||driveActive);
+ $('drive-panel').classList.toggle('hidden',!currentRoute&&!driveActive);
+ const count=getSelected().length;
+ $('plan-stage-status').textContent=`${count} display${count===1?'':'s'} selected from ${state.displays.length} saved. ${count?'Ready to plan your route.':'Choose displays to include in this drive.'}`;
+ $('plan-empty').classList.toggle('hidden',count>0);$('plan-displays').hidden=!state.displays.length;
+ if(!busy)$('optimize').disabled=count===0;
+}
+function workflowChanged(stage,previous){
+ if(previous&&stage!==previous){
+  if(pinTarget!==null)endPin();leaveMapEditing(false);
+  if(stage!=='discover'){discoveryRevision++;discoveryRequest?.abort();discoveryMapMode=false;$('discovery-map').textContent='Choose on map';}
+  if(stage!=='drive'){document.body.classList.remove('driving');$('drive-full').textContent='Focus on next stop';}
+ }
+ discoveryLayer?.clearLayers();if(stage==='discover'&&directoryData)renderDirectoryList();
+ map?.invalidateSize({pan:false});
+}
+function invalidate(){const hadRoute=!!currentRoute||driveActive;cancelOperation();if(pinTarget!==null)endPin();leaveMapEditing(false);clearRouteUndo();driveActive=false;driveRemainingIds=[];driveAnchor=null;driveFinish=null;document.body.classList.remove('driving');currentRoute=null;lastMatrix=null;currentPoints=null;updateDrivePanel();routeLayer?.clearLayers();showResults(false);$('estimate').classList.add('hidden');updatePins();if(hadRoute&&workflow?.active==='drive')showStage('plan');}
 
 async function ensureLeaflet(){
  if(window.L)return;
@@ -79,12 +99,13 @@ async function ensureLeaflet(){
 }
 async function initMap(){
  try{await ensureLeaflet();}catch(error){status('Could not load the map library. Check your network or content blockers, then reload.','error');mapLabel('Map library unavailable. Your route planner can still calculate stops.');return;}
- map=L.map('map',{zoomControl:false}).setView([39.775,-86.101],12);
+ const knownPoint=[...['start','end'].map(key=>state.endpoints[key]?.address===state[key]?state.endpoints[key]:null),...getSelected()].find(validCoordinates);
+ map=L.map('map',{zoomControl:false}).setView(knownPoint?[knownPoint.lat,knownPoint.lon]:[39.775,-86.101],12);
  L.control.zoom({position:'bottomleft'}).addTo(map);
  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',maxZoom:19}).addTo(map);
  markerLayer=L.layerGroup().addTo(map);routeLayer=L.layerGroup().addTo(map);discoveryLayer=L.layerGroup().addTo(map);
  map.on('click',event=>{
-   if(discoveryMapMode){discoveryMapMode=false;$('discovery-map').textContent='Choose on map';setDiscoveryCenter({lat:event.latlng.lat,lon:event.latlng.lng},'Chosen map location');return;}
+   if(discoveryMapMode){discoveryMapMode=false;$('discovery-map').textContent='Choose on map';setDiscoveryCenter({lat:event.latlng.lat,lon:event.latlng.lng},'Chosen map location');leaveMapEditing();return;}
    if(pinTarget===null)return;
    pinLatLon=mapPinLocation(event.latlng);
    if(!pinLatLon){$('pin-instructions').textContent='Invalid map location. Choose a valid point before saving.';return;}
@@ -93,7 +114,7 @@ async function initMap(){
  });
  updatePins();
  updateMapEditButton();
- if(currentRoute){await drawRoute();}
+ if(currentRoute){await drawRoute();}else fitMap();
 }
 function icon(number,kind='stop',isExtra=false){const extra=isExtra?' extra':'';const label=number===null?'●':number;return L.divIcon({html:`<span class="marker-pin ${kind}${extra}">${label}</span>`,className:'',iconSize:[30,30],iconAnchor:[15,15]});}
 function updatePins(){
@@ -183,6 +204,7 @@ function renderStops(){
    row.append(checkbox,info,actions);container.append(row);
  }
  $('stop-count').textContent=`${getSelected().length}/${state.displays.length}`;
+ updateWorkflowState();
 }
 function removeStop(id){
  const item=state.displays.find(d=>d.id===id);if(!item)return;
@@ -412,14 +434,15 @@ function updateMapEditButton(){
 function enterMapEditing(){
  if(!map||document.body.classList.contains('editing-map'))return;
  mapEditSession++;
- document.body.classList.add('editing-map');$('map-edit-back').classList.remove('hidden');$('map-edit-back').textContent=currentRoute?'← Back to itinerary':'← Back to planner';
+ mapStageOrigin=workflow?.active||'plan';
+ document.body.classList.add('editing-map');$('map-edit-back').classList.remove('hidden');$('map-edit-back').textContent=mapStageOrigin==='drive'?'← Back to itinerary':`← Back to ${mapStageOrigin==='discover'?'Discover':'Plan'}`;
  map?.invalidateSize({pan:false});window.scrollTo({top:0,left:0,behavior:'instant'});
 }
 function leaveMapEditing(focus=true){
  if(!document.body.classList.contains('editing-map'))return;
  mapEditSession++;
  document.body.classList.remove('editing-map');$('map-edit-back').classList.add('hidden');map?.invalidateSize({pan:false});
- if(focus){if(pinTarget!==null)endPin();(currentRoute?$('results'):$('planner-heading')).scrollIntoView({block:'start',behavior:'instant'});(currentRoute?$('edit-on-map'):$('planner-heading')).focus({preventScroll:true});}
+ if(focus){if(pinTarget!==null)endPin();showStage(mapStageOrigin,{focus:true});}
 }
 function openRoutePopup(id,action){
  const popup=routePopups.get(id);if(!popup)return;
@@ -504,7 +527,7 @@ async function calculate(approx=false){
  if(selected.length>68){status('Choose no more than 68 displays in one trip.','error');return;}
  state.start=$('start-input').value.trim();state.end=$('end-input').value.trim();
  state.mode=$('mode').value;state.budgetEnabled=$('budget-enabled').checked;state.budgetMinutes=Number($('budget-minutes').value);state.viewMinutes=Number($('view-minutes').value);save();invalidate();
- const token=beginOperation();$('estimate').classList.add('hidden');
+ const token=beginOperation(),viewRevision=workflow?.revision;$('estimate').classList.add('hidden');
  try{
    const points=await resolvePoints(selected,token.signal);token.signal.throwIfAborted();currentPoints=points;
    let matrixResult;
@@ -529,6 +552,7 @@ async function calculate(approx=false){
    status(approx?'Approximate geographic ordering generated. This is NOT a road-aware route.':'Road-optimized itinerary generated. Verify approximate pins before driving.','good');
    if(!approx){await loadRouteAlternatives(token.signal);}
    await drawRoute(token.signal);
+   token.signal.throwIfAborted();if(workflow?.revision===viewRevision)showStage('drive',{focus:true});
  } catch(error){
    if(token.signal.aborted)return;
    console.error(error);
@@ -555,7 +579,7 @@ function syncControls(){
 function changeProject(id){
  if(id===activeProjectId)return;
  if(!portfolio.projects.some(p=>p.id===id))return;
- save();gpsStart=null;cancelOperation();$('directory-review').classList.add('hidden');directoryPreview=[];activeProjectId=id;state=stateFromProject(currentProject());syncControls();invalidate();renderStops();closeImport();status(`Opened “${currentProject().name}”.`,'good');save();
+ save();gpsStart=null;cancelOperation();$('directory-review').classList.add('hidden');directoryPreview=[];activeProjectId=id;state=stateFromProject(currentProject());syncControls();invalidate();renderStops();closeImport();showStage(state.displays.length?'plan':'discover');status(`Opened “${currentProject().name}”.`,'good');save();
 }
 function openProjectEditor(copy=false){
  const source=currentProject();$('project-editor').classList.remove('hidden');$('project-name').value=copy?`${source.holiday} ${Math.max(source.year+1,2026)} Drive`:'';
@@ -572,12 +596,13 @@ function createNewProject(e){
  else{p=makeProject({name,holiday,year,displays:[],selected:[],start:'',end:'',preset:'custom'});}
  gpsStart=null;cancelOperation();portfolio.projects.push(p);activeProjectId=p.id;state=stateFromProject(p);
  $('project-editor').classList.add('hidden');syncControls();invalidate();renderStops();save();
+ showStage(state.displays.length?'plan':'discover',{focus:true});
  status(`Created ${name}.${p.sourceYear?' Review each previous-year display before driving.':' Add displays using a website, paste, or file.'}`,'good');
 }
 function deleteProject(){
  if(portfolio.projects.length<2){status('Keep at least one project. Create another before deleting this one.','error');return;}
  const p=currentProject();if(!confirm(`Delete “${p.name}” and its saved stops from this device? This cannot be undone unless you have a backup.`))return;
- portfolio.projects=portfolio.projects.filter(x=>x.id!==p.id);activeProjectId=portfolio.projects[0].id;state=stateFromProject(currentProject());syncControls();invalidate();renderStops();save();status('Project deleted.','good');
+ portfolio.projects=portfolio.projects.filter(x=>x.id!==p.id);activeProjectId=portfolio.projects[0].id;state=stateFromProject(currentProject());syncControls();invalidate();renderStops();save();showStage(state.displays.length?'plan':'discover');status('Project deleted.','good');
 }
 function backupProjects(){
  save();const file=new Blob([JSON.stringify({version:2,exportedAt:new Date().toISOString(),...portfolio},null,2)],{type:'application/json'});
@@ -588,7 +613,7 @@ async function restoreProjects(event){
  try{if(file.size>2_000_000)throw Error('Backup exceeds 2 MB');const data=JSON.parse(await file.text());
   const revived=validatePortfolio(data,{backup:true});if(!confirm(`Restore ${revived.projects.length} saved projects? This replaces current projects on this device. Export a backup first if needed.`))return;
   // Persist before replacing the in-memory portfolio, so quota failures are atomic.
-  localStorage.setItem(PROJECT_STORE,JSON.stringify(revived));storageReadError=false;gpsStart=null;cancelOperation();portfolio=revived;activeProjectId=portfolio.activeId;state=stateFromProject(currentProject());syncControls();invalidate();renderStops();save();status('Projects restored successfully.','good');
+  localStorage.setItem(PROJECT_STORE,JSON.stringify(revived));storageReadError=false;gpsStart=null;cancelOperation();portfolio=revived;activeProjectId=portfolio.activeId;state=stateFromProject(currentProject());syncControls();invalidate();renderStops();save();showStage(state.displays.length?'plan':'discover');status('Projects restored successfully.','good');
  }catch(error){status('Could not restore project backup: '+error.message,'error')}finally{event.target.value=''}
 }
 function preset(value){
@@ -604,6 +629,7 @@ function addStop(event){
  const id=createId();state.displays.push({id,name,address,score:3,lat:null,lon:null,featured:0,approved:false});state.selected.add(id);
  state.preset='custom';$('preset').value='custom';save();invalidate();renderStops();$('add-form').reset();$('add-form').classList.add('hidden');
  status('Added your stop. It will be geocoded when you optimize.','good');
+ showStage('plan',{focus:true});
 }
 function exportStops(){
  const records=state.displays.map(d=>({...d}));
@@ -711,8 +737,10 @@ function commitImport(){
  if(mode==='replace'){if(!confirm(`Replace all ${oldCount} stops in this project with ${incoming.length} reviewed stops? Other projects will be unaffected.`))return;state.displays=incoming;state.selected=new Set(selected);}
  else{state.displays.push(...incoming);state.selected=new Set([...state.selected,...selected]);}
  state.preset='custom';$('preset').value='custom';save();invalidate();renderStops();updateProjectSelect();closeImport();status(`Added ${incoming.length} reviewed displays to “${currentProject().name}”. Check their locations and current-year activity.`,'good');
+ showStage('plan',{focus:true});
 }
 function openSourcePaste(source=null){
+ showStage('discover');$('import-source-details').open=true;
  importRevision++;importRequest?.abort();sourceRecords=null;importPreviewReady=false;$('website-load').disabled=false;$('import-confirm').disabled=true;$('bulk-panel').classList.remove('hidden');
  if(source){$('website-url').value=source.url;$('import-source-holiday').value=source.season;$('import-source-year').value='';$('bulk-text').value='';delete $('bulk-text').dataset.filename;pendingImport=[];$('bulk-preview').textContent='Paste the visible listings, then Preview addresses.';}
  $('paste-source-status').textContent=source?.id==='frightmaps'?'FrightMaps often shows only a city. Copy an explicitly published/permitted street address from an individual listing; do not infer one from a display name.':`Open the source link above, copy its visible listings and dated heading, then paste below. ${source?.id==='indy-christmas'?'The inspected Christmas guide is labeled 2025; keep that year unless the page itself changes.':''}`;
@@ -746,9 +774,9 @@ async function locateDiscovery(gps=false){
 }
 function renderDiscoveryPins(entries){
  if(!discoveryLayer)return;discoveryLayer.clearLayers();
- if($('directory-panel').classList.contains('hidden'))return;
+ if(workflow?.active!=='discover'||$('directory-panel').classList.contains('hidden'))return;
  for(const e of entries.filter(located)){
-  const text=document.createElement('div'),name=document.createElement('strong'),address=document.createElement('p'),button=document.createElement('button');name.textContent=e.name;address.textContent=e.address;button.type='button';button.textContent=directorySelection.has(e.id)?'Selected · show listing':'Show listing';button.addEventListener('click',()=>{const row=document.getElementById(`directory-select-${e.id}`);row?.scrollIntoView({block:'center',behavior:'smooth'});row?.focus();});text.append(name,address,button);
+  const text=document.createElement('div'),name=document.createElement('strong'),address=document.createElement('p'),button=document.createElement('button');name.textContent=e.name;address.textContent=e.address;button.type='button';button.textContent=directorySelection.has(e.id)?'Selected · show listing':'Show listing';button.addEventListener('click',()=>{showStage('discover');const row=document.getElementById(`directory-select-${e.id}`);row?.scrollIntoView({block:'center',behavior:'smooth'});row?.focus();});text.append(name,address,button);
   L.marker([e.lat,e.lon],{icon:icon(null,'stop',!directorySelection.has(e.id))}).bindPopup(text).addTo(discoveryLayer);
  }
  if(discoveryCenter)L.circleMarker([discoveryCenter.lat,discoveryCenter.lon],{radius:8,color:'#60a5fa'}).addTo(discoveryLayer);
@@ -907,6 +935,7 @@ async function applyDirectoryReview(){
   $('directory-review').classList.add('hidden');directoryPreview=[];suggestion=null;
   directoryStatus(`${next.added} added · ${next.updated} matched listing updates. Display operation still requires verification.`);
   renderDirectoryList();
+  showStage('plan',{focus:true});
   if(pendingSuggestion)await calculate(false);
  }catch(error){directoryStatus('Directory changes not saved: '+error.message);}
 }
@@ -927,20 +956,21 @@ function setEndpoint(key,value){
 }
 function updateDrivePanel(){
  const el=$('drive-current');if(!el)return;
+ updateWorkflowState();
  $('drive-panel').classList.toggle('active',driveActive);
  $('drive-resume').classList.toggle('hidden',!savedDrive()||driveActive);
  $('drive-start').disabled=!currentRoute||!!currentRoute.approx||driveActive;
  for(const id of ['drive-visited','drive-skip','drive-gps','drive-retry','drive-end'])$(id).disabled=!driveActive||busy;
  updateDriveFeedback();
  $('drive-next-links').replaceChildren();
- if(!driveActive){el.textContent=currentRoute?'Ready to start. Live Drive Mode requires road routing.':'Optimize a road route first.';return;}
+ if(!driveActive){el.textContent=currentRoute?(currentRoute.approx?'This rough order needs road routing before Live Drive is available. Return to Plan and optimize again.':'Ready when you are. Start Live Drive for a focused next-stop view.'):'Optimize a road route first.';return;}
  const next=state.displays.find(d=>d.id===driveRemainingIds[0]);
  el.textContent=next?`${driveRemainingIds.length} remaining · Next: ${next.name} — ${next.address}`:'All displays completed. Head toward your final destination.';
  $('drive-progress').textContent=`${Math.max(0,driveTotal-driveRemainingIds.length)} of ${driveTotal} displays completed or skipped${routeEstimates()?' · '+minutes(routeEstimates().duration)+' modeled driving remaining (includes finish)':''}`;
  for(const [label,fn] of [['Apple Maps',appleDirections],['Google Maps',googleDirections]]){
   const link=document.createElement('a');link.className='secondary';link.href=fn(waypointValue(driveAnchor),[waypointValue(next||driveFinish)]);link.target='_blank';link.rel='noopener noreferrer';link.textContent=`Navigate · ${label} ↗`;$('drive-next-links').append(link);
  }
- $('drive-visited').disabled=busy||!next;$('drive-skip').disabled=busy||!next;
+ $('drive-visited').disabled=busy||!next||!currentRoute;$('drive-skip').disabled=busy||!next||!currentRoute;
 }
 function updateDriveFeedback(){
  const panel=$('drive-feedback'),item=driveActive?state.displays.find(d=>d.id===driveRemainingIds[0]):null;
@@ -981,7 +1011,7 @@ function savedDrive(){
  return session;
 }
 function saveDrive(){state.drive={fingerprint:driveFingerprint(),remainingIds:driveRemainingIds.slice(),anchorId:driveAnchorId,total:driveTotal};save();}
-function focusDrive(){leaveMapEditing(false);document.body.classList.add('driving');$('drive-panel').scrollIntoView({block:'start',behavior:'instant'});$('drive-visited').focus({preventScroll:true});}
+function focusDrive(){leaveMapEditing(false);showStage('drive');document.body.classList.add('driving');$('drive-full').textContent='Show full itinerary';$('drive-panel').scrollIntoView({block:'start',behavior:'instant'});const target=$('drive-visited').disabled?$('drive-current'):$('drive-visited');target.tabIndex=target.id==='drive-current'?-1:0;target.focus({preventScroll:true});}
 function beginDrive(){
  if(!currentRoute||currentRoute.approx||busy)return;
  clearRouteUndo();if(pinTarget!==null)endPin();
@@ -993,7 +1023,8 @@ function beginDrive(){
 function stopDrive(){cancelOperation();driveActive=false;driveAnchor=null;driveRemainingIds=[];driveFinish=null;state.drive=null;save();document.body.classList.remove('driving');if(currentRoute)renderRouteSummary();else updateDrivePanel();status('Drive session ended. Saved visits and skipped statuses remain in this holiday project.','good');}
 async function resumeDrive(){
  const session=savedDrive();if(!session||busy)return;
- const token=beginOperation();
+ showStage('drive',{focus:true});
+ const token=beginOperation(),viewRevision=workflow?.revision;
  try{
   const items=session.remainingIds.map(id=>state.displays.find(d=>d.id===id));
   const anchor=state.displays.find(d=>d.id===session.anchorId);
@@ -1002,7 +1033,7 @@ async function resumeDrive(){
   driveAnchor=anchor?{...anchor}:resolved[0];driveFinish=resolved.at(-1);
  }catch(error){if(!token.signal.aborted)status('Could not resume: '+error.message,'error');return;}
  finally{finishOperation(token);}
- if(driveActive){focusDrive();await rerouteLive(false);}
+ if(driveActive){if(workflow?.revision===viewRevision)focusDrive();await rerouteLive(false);}
 }
 async function liveAction(action){
  if(!driveActive||busy||!currentRoute)return;
@@ -1103,8 +1134,10 @@ function importSharedDrive(){
  const copy=sharedIncoming;const displays=copy.stops.map((s,i)=>({id:createId(),name:s.name,address:s.address,lat:null,lon:null,featured:0,approved:false,sourceName:'Shared GlowRoute itinerary',needsSeasonCheck:true,rating:3}));
  const next=makeProject({name:uniqueProjectName(copy.name,portfolio.projects),holiday:copy.holiday,year:copy.year,displays,selected:displays.map(d=>d.id),start:copy.start||'',end:copy.end||'',preset:'custom'});
  save();portfolio.projects.push(next);activeProjectId=next.id;state=stateFromProject(next);dismissShare();syncControls();invalidate();renderStops();save();status(`Imported ${displays.length} shared houses into a NEW project. Check addresses before driving.`,'good');
+ showStage('plan',{focus:true});
 }
 function wire(){
+ workflow=initWorkflow({initial:!rawPortfolio&&!legacy&&!storageReadError?'discover':state.displays.length?'plan':'discover',onChange:workflowChanged});
  $('map-edit-undo').addEventListener('click',undoRouteEdit);
  $('map-edit-back').addEventListener('click',()=>leaveMapEditing());
  $('edit-on-map').addEventListener('click',()=>{if(!currentRoute||driveActive)return;enterMapEditing();openRoutePopup(currentPoints[currentRoute.order[0]]?.id);});
@@ -1113,14 +1146,14 @@ function wire(){
  syncControls();
  if(!rawPortfolio&&!legacy&&!storageReadError&&!location.hash.startsWith('#tour='))$('welcome').classList.remove('hidden');
  if(storageReadError)$('storage-status').textContent='Saved data could not be read. Original browser data has not been overwritten. Export any work in this session before recovery.';
- $('welcome-sample').addEventListener('click',()=>{$('welcome').classList.add('hidden');save();$('start-input').focus();});
+ $('welcome-sample').addEventListener('click',()=>{$('welcome').classList.add('hidden');save();showStage('plan');$('start-input').focus();});
  $('welcome-own').addEventListener('click',()=>{$('welcome').classList.add('hidden');openProjectEditor(false);$('project-name').focus();});
  $('use-location').addEventListener('click',useStartingLocation);
  $('round-trip').addEventListener('click',()=>{if(gpsStart){temporaryFinish={...gpsStart,name:'Return to start'};save();invalidate();$('location-status').textContent='Finish returns to your temporary start for this tab only.';}else{setEndpoint('end',$('start-input').value.trim());$('end-input').value=state.end;}});
  for(const id of ['departure','departure-zone','departure-fold'])$(id).addEventListener('change',()=>{state.departure=$('departure').value;state.departureZone=$('departure-zone').value.trim();state.departureFold=$('departure-fold').value;save();if(currentRoute)renderSchedule(state,currentRoute,currentPoints,lastMatrix,currentProject());});
  $('drive-resume').addEventListener('click',resumeDrive);
  $('drive-retry').addEventListener('click',()=>rerouteLive(false));
- $('drive-full').addEventListener('click',()=>{const focused=document.body.classList.toggle('driving');$('drive-full').textContent=focused?'Show full itinerary':'Focus on next stop';updateDrivePanel();});
+ $('drive-full').addEventListener('click',()=>{showStage('drive');const focused=document.body.classList.toggle('driving');$('drive-full').textContent=focused?'Show full itinerary':'Focus on next stop';updateDrivePanel();if(focused)$('drive-panel').scrollIntoView({block:'start',behavior:'instant'});});
  $('drive-rating').addEventListener('change',event=>editDriveFeedback('rating',event.target.value));
  $('drive-favorite').addEventListener('click',()=>editDriveFeedback('favorite'));
  $('drive-notes').addEventListener('input',event=>editDriveFeedback('visitNotes',event.target.value));
@@ -1143,7 +1176,7 @@ function wire(){
  $('reset').addEventListener('click',()=>{
   if(!confirm('Reset only the CURRENT project? Other seasons and years will be preserved.'))return;
   const p=currentProject();state={...seedState(),displays:p.holiday==='Halloween'&&p.year===2026?cloneSeed():[],selected:p.holiday==='Halloween'&&p.year===2026?seedSelections():new Set(),preset:p.holiday==='Halloween'&&p.year===2026?'top10':'custom',start:state.start,end:state.end};
-  syncControls();save();invalidate();renderStops();status('Current project reset. Other projects are safe.');
+  syncControls();save();invalidate();renderStops();showStage(state.displays.length?'plan':'discover');status('Current project reset. Other projects are safe.');
  });
  $('project-picker').addEventListener('change',e=>changeProject(e.target.value));
  $('project-new').addEventListener('click',()=>openProjectEditor(false));
@@ -1173,7 +1206,7 @@ function wire(){
  $('discovery-address').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();locateDiscovery(false);}});
  $('discovery-address').addEventListener('input',()=>{discoveryRevision++;discoveryRequest?.abort();});
  $('discovery-clear').addEventListener('click',()=>setDiscoveryCenter(null,''));
- $('discovery-map').addEventListener('click',()=>{if(!map){$('discovery-location-status').textContent='Map is unavailable. Enter an address or coordinates.';return;}discoveryRevision++;discoveryRequest?.abort();discoveryMapMode=!discoveryMapMode;$('discovery-map').textContent=discoveryMapMode?'Cancel map choice':'Choose on map';$('discovery-location-status').textContent=discoveryMapMode?'Tap a point on the map to search nearby.':'Map choice canceled.';if(discoveryMapMode)$('map').scrollIntoView({block:'center',behavior:'smooth'});});
+ $('discovery-map').addEventListener('click',()=>{if(!map){$('discovery-location-status').textContent='Map is unavailable. Enter an address or coordinates.';return;}if(pinTarget!==null)endPin();discoveryRevision++;discoveryRequest?.abort();discoveryMapMode=!discoveryMapMode;$('discovery-map').textContent=discoveryMapMode?'Cancel map choice':'Choose on map';$('discovery-location-status').textContent=discoveryMapMode?'Tap a point on the map to search nearby.':'Map choice canceled.';if(discoveryMapMode)enterMapEditing();else leaveMapEditing();});
  $('discovery-snapshot').addEventListener('change',loadDiscoverySnapshot);$('discovery-suggest').addEventListener('click',suggestDiscoveryTour);
  $('explorer-load').addEventListener('click',loadExplorerSnapshot);$('source-paste-open').addEventListener('click',()=>openSourcePaste());
  $('directory-select-visible').addEventListener('click',toggleDirectoryShown);
