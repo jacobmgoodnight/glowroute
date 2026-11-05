@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.9.0 — Connected map editing and easier drive recovery
+
+- Connect itinerary names and map pins in both directions, highlight the selected stop, and return keyboard focus to its matching itinerary row. Selection stays in memory without changing saved data or requesting route/geocode services.
+- Add a saved excluded display or a custom address/coordinates to an optimized itinerary at an explicit position. Keep endpoints and the other stops' order, check location/road estimates before applying, and leave saved displays and the itinerary unchanged on cancellation, stale project work or lookup/routing failure. Keep rough routes approximate, existing duplicate/capacity rules and updated budget/viewing totals.
+- Add **Undo last action** for the latest Live Drive visit/skip, including pending/failed reroutes and the last display. Restore order, anchor, progress and prior visit metadata while retaining edited ratings, favorites and notes. Undo is tab-only and cleared on start/resume/end or plan/project invalidation.
+- Keep Navigate, Visited, Skip and feedback prominent; place GPS rerouting and End drive under **More actions**. Show **Retry without GPS** only when a routing/location failure needs recovery.
+- Preserve local storage, sharing privacy, fixed endpoints and PWA updates without new services, runtime dependencies or data migrations. See [v1.9 scope and validation](docs/RELEASE-v1.9.md).
+
 ## 1.8.0 — Discover, Plan and Drive
 
 - Group the existing interface into three keyboard-accessible stages: discover/add/import displays, plan the selection and endpoints, then review/navigate/drive. Returning saved drives open Plan; empty new drives open Discover.

@@ -36,7 +36,7 @@ const fixture=()=>({activeId:'t1',projects:[{id:'t1',name:'Denver example drive'
 const indices=url=>url.split('/driving/')[1].split('?')[0].split(';').map(p=>Math.round((Number(p.split(',')[1])-39.73)*1000));
 const time=(i,j)=>i===j?0:j>i?(j-i)*60:(i-j)*600;
 const distance=(i,j)=>i===j?0:(i===0&&j===4||i===1&&j===5||i>j&&i<5&&j>0)?100:3000;
-async function prepare(browser,viewport,{saved=true,storageFail=false,corrupt=false,touch=false,mapFail=false}={}){
+async function prepare(browser,viewport,{saved=true,storageFail=false,corrupt=false,touch=false,mapFail=false,data=fixture()}={}){
  const context=await browser.newContext({viewport,hasTouch:touch,serviceWorkers:'block'}),page=await context.newPage(),errors=[];
  page.on('pageerror',error=>errors.push(error.message));
  const control={fail:false,geometryFail:false,delay:0,calls:[],gpsCalls:0,importDelay:0,snapshotCalls:0,snapshotFail:false};
@@ -46,7 +46,7 @@ async function prepare(browser,viewport,{saved=true,storageFail=false,corrupt=fa
    localStorage.clear();if(saved)localStorage.setItem('glowroute:projects:v2',corrupt?'BROKEN JSON':JSON.stringify(data));sessionStorage.setItem('test-initialized','1');
   }
   if(storageFail)Storage.prototype.setItem=function(){throw new DOMException('full','QuotaExceededError');};
- },{saved,storageFail,corrupt,data:fixture()});
+ },{saved,storageFail,corrupt,data});
  await context.route('**/*',async route=>{
   const url=route.request().url();
   if(url===EXPLORER_SNAPSHOT_URL){control.snapshotCalls++;await route.fulfill(control.snapshotFail?{status:503,body:'Unavailable'}:{json:[{id:'old-christmas',name:'Explorer archive fixture',address:'999 Example Rd, Denver, CO',season:'Christmas',year:2025,lastImported:'2026-10-22',sources:[{name:'Permitted test provider',url:'https://example.org/archive',recordId:'old-christmas'}]},{id:'city',name:'Explorer city fixture',town:'Denver',address:'',season:'Halloween',year:2026,sources:[{name:'Permitted test provider',url:'https://example.org/city',recordId:'city'}]}]});return;}
@@ -75,12 +75,118 @@ async function shareDetails(page){await stage(page,'drive');await details(page,'
 async function optimize(page){await stage(page,'plan');await page.locator('#optimize').click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);assert(await page.locator('#stage-drive').isVisible(),await page.locator('#status').innerText());assert(await page.locator('#results').isVisible(),await page.locator('#status').innerText());}
 async function textOrder(page){return page.locator('.itinerary-label').allTextContents();}
 async function editOnMap(page){if(await page.locator('body').evaluate(b=>b.classList.contains('editing-map')))await page.locator('#map-edit-back').click();await stage(page,'drive');await page.locator('#edit-on-map').click();}
+async function routeIds(page){return page.locator('.itinerary-row').evaluateAll(rows=>rows.map(row=>row.dataset.stopId));}
+async function addToRoute(page){await stage(page,'drive');if(await page.locator('#route-add-form').isHidden())await page.locator('#route-add-toggle').click();}
+async function endDrive(page){await details(page,'drive-more');await page.locator('#drive-end').click();}
 async function navigationEnds(page){return page.locator('#nav-buttons a').evaluateAll(nodes=>['maps.apple.com','www.google.com'].map(host=>{const urls=nodes.map(n=>new URL(n.href)).filter(u=>u.hostname===host);return [urls[0].searchParams.get('origin')||urls[0].searchParams.get('source'),urls.at(-1).searchParams.get('destination')];}));}
 let checks=0;
 function pass(message){checks++;console.log(`PASS ${message}`);}
 const browser=await chromium.launch({headless:true,...(process.env.GLOWROUTE_BROWSER_EXECUTABLE?{executablePath:process.env.GLOWROUTE_BROWSER_EXECUTABLE}:{})});
 console.log(`Browser engine: ${browser.version()}`);
 try{
+ for(const viewport of [{width:1366,height:900},{width:390,height:844}]){
+  const {context,page,control,errors}=await prepare(browser,viewport);await stage(page,'plan');await page.locator('#mode').selectOption('duration');await optimize(page);
+  const row=()=>page.locator('.itinerary-row[data-stop-id="demo2"]'),order=await routeIds(page),saved=await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),calls=control.calls.length;
+  await row().getByRole('button',{name:'Show Colorado State Capitol on map',exact:true}).click();assert.equal(await page.locator('.map-stop-popup').getAttribute('data-stop-id'),'demo2');assert(await page.locator('body').evaluate(el=>el.classList.contains('editing-map')));
+  assert(await row().evaluate(el=>el.classList.contains('selected-stop')));assert.equal(await row().locator('.itinerary-label').getAttribute('aria-pressed'),'true');
+  await page.locator('.map-stop-popup [data-map-action="itinerary"]').click();assert(await page.locator('#stage-drive').isVisible());assert.equal(await page.locator('body').evaluate(el=>el.classList.contains('editing-map')),false);assert(await row().isVisible());assert.equal(await page.evaluate(()=>document.activeElement.closest('.itinerary-row')?.dataset.stopId),'demo2');
+  assert.deepEqual(await routeIds(page),order);assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),saved);assert.equal(control.calls.length,calls);
+  await row().getByRole('button',{name:'Move Colorado State Capitol later',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);assert(await row().evaluate(el=>el.classList.contains('selected-stop')));assert.equal(await row().locator('.itinerary-label').getAttribute('aria-pressed'),'true');
+  await row().locator('.itinerary-label').click();assert.equal(await page.locator('.map-stop-popup').getAttribute('data-stop-id'),'demo2');await page.locator('.map-stop-popup [data-map-action="itinerary"]').click();
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);await context.close();pass(`${viewport.width}px: itinerary/map selection links by stable display ID, survives reorder and never changes saved data or requests routes just to select`);
+ }
+ for(const viewport of [{width:1366,height:900},{width:390,height:844}]){
+  const {context,page,control,errors}=await prepare(browser,viewport);await planDisplays(page);await page.locator('.stop input[type=checkbox]').nth(3).uncheck();await optimize(page);
+  const order=await routeIds(page),ends=await navigationEnds(page),tables=control.calls.filter(url=>url.includes('/table/')).length;await addToRoute(page);await page.locator('#route-add-saved').selectOption('demo4');await page.locator('#route-add-position').selectOption('1');await page.locator('#route-add-submit').click();
+  await page.waitForFunction(()=>document.querySelectorAll('.itinerary-row').length===4&&!document.querySelector('#optimize').disabled);assert.deepEqual(await routeIds(page),[order[0],'demo4',...order.slice(1)]);assert.deepEqual(await navigationEnds(page),ends);assert.equal(control.calls.filter(url=>url.includes('/table/')).length,tables+1);
+  const state=await page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')).projects[0].state);assert.equal(state.displays.length,4);assert(state.selected.includes('demo4'));assert.equal(state.displays.find(display=>display.id==='demo4').visitNotes,'PRIVATE NOTE');assert.match(await page.locator('#route-detail').innerText(),/Manually arranged/);
+  await page.locator('#drive-start').click();assert(await page.locator('#route-add-form').isHidden());assert(await page.locator('#route-add-toggle').isHidden()||await page.locator('#route-add-toggle').isDisabled());await endDrive(page);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);await context.close();pass(`${viewport.width}px: insert an excluded saved stop at the chosen position while preserving order, fixed endpoints, saved notes and Live Drive safety`);
+ }
+ {
+  const data=fixture();data.projects[0].state.cache['1200 broadway, denver, co']={lat:39.736,lon:-104.944,source:'OpenStreetMap'};
+  const {context,page,control,errors}=await prepare(browser,{width:390,height:844},{data});await optimize(page);const order=await routeIds(page),ends=await navigationEnds(page);
+  await addToRoute(page);await page.locator('#route-add-saved').selectOption('');await page.locator('#route-add-name').fill('Public History Museum');await page.locator('#route-add-address').fill('1200 Broadway, Denver, CO');await page.locator('#route-add-position').selectOption('0');await page.locator('#route-add-submit').click();
+  await page.waitForFunction(()=>document.querySelectorAll('.itinerary-row').length===5&&!document.querySelector('#optimize').disabled);const inserted=(await routeIds(page))[0];assert.deepEqual((await routeIds(page)).slice(1),order);assert.deepEqual(await navigationEnds(page),ends);
+  const state=await page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')).projects[0].state);assert.equal(state.displays.find(display=>display.id===inserted).name,'Public History Museum');assert.equal(state.displays.length,5);assert(state.selected.includes(inserted));
+  await addToRoute(page);await page.locator('#route-add-saved').selectOption('');await page.locator('#route-add-name').fill('Duplicate name');await page.locator('#route-add-address').fill('1200 Broadway, Denver, CO');const saved=await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),calls=control.calls.length;
+  await page.locator('#route-add-submit').click();assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),saved);assert.equal(control.calls.length,calls);assert.equal(await page.locator('.itinerary-row').count(),5);assert.match(await page.locator('#route-add-status').innerText(),/already|duplicate/i);
+  await page.locator('#route-add-cancel').click();assert(await page.locator('#route-add-form').isHidden());assert.deepEqual(errors,[]);await context.close();pass('custom route insertion keeps the old order and endpoints, stores only a successful addition and rejects duplicate addresses without a request');
+ }
+ {
+  const {context,page,control,errors}=await prepare(browser,{width:390,height:844});await planDisplays(page);await page.locator('.stop input[type=checkbox]').nth(3).uncheck();await optimize(page);const order=await routeIds(page),saved=await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2'));
+  await addToRoute(page);await page.locator('#route-add-saved').selectOption('demo4');control.fail=true;await page.locator('#route-add-submit').click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);
+  assert.deepEqual(await routeIds(page),order);assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),saved);assert(await page.locator('#route-add-form').isVisible());assert.match(await page.locator('#route-add-status').innerText(),/could not|unavailable|failed|unchanged/i);
+  control.fail=false;await page.locator('#route-add-submit').click();await page.waitForFunction(()=>document.querySelectorAll('.itinerary-row').length===4&&!document.querySelector('#optimize').disabled);assert.deepEqual(errors,[]);await context.close();pass('failed insertion is atomic for itinerary and saved displays, keeps its review form and supports retry');
+ }
+ {
+  const {context,page,control,errors}=await prepare(browser,{width:390,height:844});await planDisplays(page);await page.locator('.stop input[type=checkbox]').nth(3).uncheck();await optimize(page);await addToRoute(page);await page.locator('#route-add-saved').selectOption('demo4');control.delay=350;
+  const started=page.waitForRequest(request=>request.url().includes('/table/'));await page.locator('#route-add-submit').click();await started;await page.locator('#project-new').click();await page.locator('#project-name').fill('Unrelated outing');await page.locator('#project-create-form button[type=submit]').click();await page.waitForTimeout(700);
+  assert.equal(await page.locator('.stop').count(),0);assert(await page.locator('#results').isHidden());assert(await page.locator('#route-add-form').isHidden());const portfolio=await page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')));assert(!portfolio.projects.find(project=>project.id==='t1').state.selected.includes('demo4'));
+  assert.match(await page.locator('#status').innerText(),/Created Unrelated outing/);assert.deepEqual(errors,[]);await context.close();pass('an interrupted insertion cannot add a stop to either the old project or a newly chosen project');
+ }
+ {
+  const {context,page,control,errors}=await prepare(browser,{width:390,height:844});await planDisplays(page);await page.locator('.stop input[type=checkbox]').nth(3).uncheck();control.fail=true;await page.locator('#optimize').click();await page.locator('#estimate').waitFor({state:'visible'});await page.locator('#estimate').click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);
+  const order=await routeIds(page),calls=control.calls.length;await addToRoute(page);await page.locator('#route-add-saved').selectOption('demo4');await page.locator('#route-add-position').selectOption('1');await page.locator('#route-add-submit').click();await page.waitForFunction(()=>document.querySelectorAll('.itinerary-row').length===4);
+  assert.deepEqual(await routeIds(page),[order[0],'demo4',...order.slice(1)]);assert.equal(control.calls.length,calls);assert.match(await page.locator('#route-detail').innerText(),/NOT road-optimized/);assert.match(await page.locator('#metrics').innerText(),/Road time unavailable/);assert(await page.locator('#drive-start').isDisabled());assert.deepEqual(errors,[]);await context.close();pass('rough-route insertion preserves geographic ordering labels and never invents a driving time or calls the unavailable router');
+ }
+ {
+  const {context,page,errors}=await prepare(browser,{width:390,height:844});await optimize(page);await addToRoute(page);await page.locator('#route-add-saved').selectOption('');await page.locator('#route-add-name').fill('Unresolved display');await page.locator('#route-add-address').fill('not an address');
+  await page.route(/^https:\/\/nominatim\.openstreetmap\.org\/search\?/,route=>route.fulfill({json:[]}));const saved=await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),order=await routeIds(page);await page.locator('#route-add-submit').click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);
+  assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),saved);assert.deepEqual(await routeIds(page),order);assert.match(await page.locator('#route-add-status').innerText(),/address|location|valid|could not/i);assert.deepEqual(errors,[]);await context.close();pass('an invalid or unresolved custom address cannot partially change the route or saved displays');
+ }
+ {
+  const {context,page,control,errors}=await prepare(browser,{width:390,height:844});await planDisplays(page);await page.locator('.stop input[type=checkbox]').nth(3).uncheck();await optimize(page);await addToRoute(page);await page.locator('#route-add-saved').selectOption('demo4');const order=await routeIds(page),saved=await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2'));control.delay=350;
+  const started=page.waitForRequest(request=>request.url().includes('/table/'));await page.locator('#route-add-submit').click();await started;await page.locator('#route-add-cancel').click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);await page.waitForTimeout(450);
+  assert(await page.locator('#route-add-form').isHidden());assert.deepEqual(await routeIds(page),order);assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),saved);assert(await page.locator('#route-add-toggle').isEnabled());assert.deepEqual(errors,[]);await context.close();pass('canceling a pending insertion restores controls and prevents a late response from changing itinerary or saved data');
+ }
+ {
+  const {context,page,errors}=await prepare(browser,{width:390,height:844});await optimize(page);await addToRoute(page);await page.locator('#route-add-saved').selectOption('');await page.locator('#route-add-name').fill('Ambiguous display');await page.locator('#route-add-address').fill('123 Example Road, Denver, CO');
+  await page.route(/^https:\/\/nominatim\.openstreetmap\.org\/search\?/,route=>route.fulfill({json:[{lat:'39.736',lon:'-104.944',display_name:'First match'},{lat:'39.737',lon:'-104.943',display_name:'Second match'}]}));const order=await routeIds(page),saved=await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2'));await page.locator('#route-add-submit').click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);
+  assert.deepEqual(await routeIds(page),order);assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),saved);assert.match(await page.locator('#route-add-status').innerText(),/Several locations|multiple|ambiguous/i);assert.deepEqual(errors,[]);await context.close();pass('ambiguous custom addresses require clarification without persisting geocodes, partial displays or route changes');
+ }
+ {
+  const data=fixture();for(let i=4;i<70;i++)data.projects[0].state.displays.push({id:`extra${i}`,name:`Public fixture ${i}`,address:`${100+i} Public St, Denver, CO`,lat:39.736+i*.00001,lon:-104.944,geoSource:'manual',approved:true});data.projects[0].state.selected=data.projects[0].state.displays.slice(0,3).map(display=>display.id);
+  const {context,page,control,errors}=await prepare(browser,{width:390,height:844},{data});await optimize(page);await addToRoute(page);await page.locator('#route-add-saved').selectOption('');await page.locator('#route-add-name').fill('Over capacity');await page.locator('#route-add-address').fill('39.738,-104.943');const saved=await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),calls=control.calls.length;await page.locator('#route-add-submit').click();
+  assert.equal(await page.evaluate(()=>localStorage.getItem('glowroute:projects:v2')),saved);assert.equal(control.calls.length,calls);assert.equal(await page.locator('.itinerary-row').count(),3);assert.match(await page.locator('#route-add-status').innerText(),/70|limit|capacity/i);assert.deepEqual(errors,[]);await context.close();pass('a custom addition cannot exceed 70 saved displays, even when the current route is small');
+  data.projects[0].state.selected=data.projects[0].state.displays.slice(0,68).map(display=>display.id);const full=await prepare(browser,{width:1366,height:900},{data});await optimize(full.page);assert.equal(await full.page.locator('.itinerary-row').count(),68);assert(await full.page.locator('#route-add-toggle').isDisabled());assert.deepEqual(full.errors,[]);await full.context.close();pass('a 68-display itinerary disables further insertion before any additional routing request');
+ }
+ for(const viewport of [{width:1366,height:900},{width:390,height:844}]){
+  const {context,page,errors}=await prepare(browser,viewport);await optimize(page);await page.locator('#drive-start').click();assert(await page.locator('#drive-retry').isHidden());assert(await page.locator('#drive-undo').isHidden());assert(await page.locator('#drive-gps').isHidden());assert(await page.locator('#drive-end').isHidden());
+  const more=page.locator('#drive-more > summary');await more.focus();await more.press('Enter');assert(await page.locator('#drive-gps').isVisible());assert(await page.locator('#drive-end').isVisible());await more.press('Enter');assert(await page.locator('#drive-end').isHidden());
+  const previous=await page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')).projects[0].state.drive),target=previous.remainingIds[0],name=displays.find(display=>display.id===target).name;
+  await page.locator('#drive-rating label').nth(4).click();await page.locator('#drive-visited').click();await page.waitForFunction(()=>!document.querySelector('#drive-visited').disabled);assert(await page.locator('#drive-undo').isVisible());
+  await page.locator('#drive-full').click();await planDisplays(page);let stop=page.locator('.stop').filter({has:page.locator('.stop-title',{hasText:name})});await stop.locator('.rating-select').selectOption('4');await stop.locator('.stop-preferences button').first().click();await stop.locator('.stop-actions > summary').click();page.once('dialog',dialog=>dialog.accept('Changed after visiting'));await stop.getByRole('button',{name:'Notes',exact:true}).click();
+  await stage(page,'drive');await page.locator('#drive-undo').click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);const restored=await page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')).projects[0].state),item=restored.displays.find(display=>display.id===target);
+  assert.deepEqual(restored.drive.remainingIds,previous.remainingIds);assert.equal(restored.drive.anchorId,previous.anchorId);for(const field of ['visited','visitedAt','skipped'])assert.equal(Object.hasOwn(item,field),false);assert.equal(item.rating,4);assert.equal(item.favorite,true);assert.equal(item.visitNotes,'Changed after visiting');assert.equal(await page.locator('#drive-feedback').getAttribute('data-display-id'),target);assert(await page.locator('#drive-undo').isHidden());assert(await page.locator('#drive-retry').isHidden());
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await endDrive(page);assert.deepEqual(errors,[]);await context.close();pass(`${viewport.width}px: healthy Live Drive shows primary actions, keyboard More reveals secondary actions, visit undo restores the stop/status while preserving later rating/favorite/note edits`);
+ }
+ {
+  const {context,page,control,errors}=await prepare(browser,{width:390,height:844});await optimize(page);await page.locator('#drive-start').click();const order=await routeIds(page),session=await page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')).projects[0].state.drive);
+  control.delay=350;const started=page.waitForRequest(request=>request.url().includes('/table/'));await page.locator('#drive-skip').click();await started;assert(await page.locator('#drive-undo').isVisible());assert(await page.locator('#drive-undo').isEnabled());await page.locator('#drive-undo').click();await page.waitForFunction(()=>!document.querySelector('#drive-visited').disabled);await page.waitForTimeout(450);
+  const restored=await page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')).projects[0].state);assert.deepEqual(restored.drive.remainingIds,session.remainingIds);assert.deepEqual(await routeIds(page),order);assert.equal(Object.hasOwn(restored.displays.find(display=>display.id===session.remainingIds[0]),'skipped'),false);assert(await page.locator('#drive-retry').isHidden());assert(await page.locator('#drive-undo').isHidden());
+  await endDrive(page);assert.deepEqual(errors,[]);await context.close();pass('undo remains available during rerouting and a delayed skipped-route response cannot replace the restored itinerary');
+ }
+ {
+  const {context,page,control,errors}=await prepare(browser,{width:390,height:844});await optimize(page);await page.locator('#drive-start').click();const previous=await page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')).projects[0].state.drive);control.fail=true;await page.locator('#drive-skip').click();await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Could not reroute'));
+  assert(await page.locator('#drive-retry').isVisible());assert(await page.locator('#drive-undo').isEnabled());await page.locator('#drive-undo').click();await page.waitForFunction(()=>!document.querySelector('#drive-visited').disabled);assert.deepEqual((await page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')).projects[0].state.drive)).remainingIds,previous.remainingIds);assert(await page.locator('#drive-retry').isHidden());assert(await page.locator('#drive-undo').isHidden());
+  await endDrive(page);assert.deepEqual(errors,[]);await context.close();pass('after a failed skip reroute, undo restores the prior valid itinerary and clears the recovery-only Retry action without another request');
+ }
+ {
+  const {context,page,errors}=await prepare(browser,{width:390,height:844});await planDisplays(page);for(let i=1;i<4;i++)await page.locator('.stop input[type=checkbox]').nth(i).uncheck();await optimize(page);await page.locator('#drive-start').click();const session=await page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')).projects[0].state.drive);
+  await page.locator('#drive-visited').click();await page.waitForFunction(()=>document.querySelector('#drive-current').textContent.includes('All displays completed'));assert(await page.locator('#drive-undo').isVisible());await page.locator('#drive-undo').click();await page.waitForFunction(()=>!document.querySelector('#drive-visited').disabled);
+  assert.deepEqual((await page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')).projects[0].state.drive)).remainingIds,session.remainingIds);assert.equal(await page.locator('.itinerary-row').count(),1);assert(await page.locator('#drive-feedback').isVisible());assert(await page.locator('#drive-undo').isHidden());await endDrive(page);assert.deepEqual(errors,[]);await context.close();pass('undo also restores the last visited display after completion has cleared the saved session');
+ }
+ {
+  const {context,page,errors}=await prepare(browser,{width:390,height:844});await page.locator('details[aria-label="Optional time budget"] summary').click();await page.locator('#budget-enabled').check();await page.locator('#budget-minutes').fill('90');await page.locator('details[aria-label="Optional visit schedule"] summary').click();await page.locator('#departure').fill('2026-12-20T18:00');await page.locator('#departure-zone').fill('America/Denver');await page.locator('#departure-zone').press('Tab');await optimize(page);assert.equal(await page.locator('.itinerary-row').count(),4);await page.locator('#drive-start').click();
+  const id=await page.locator('#drive-feedback').getAttribute('data-display-id'),name=displays.find(display=>display.id===id).name;
+  await page.locator('#drive-visited').click();await page.waitForFunction(()=>!document.querySelector('#drive-visited').disabled);await page.locator('#drive-full').click();await planDisplays(page);const stop=()=>page.locator('.stop').filter({has:page.locator('.stop-title',{hasText:name})});await stop().locator('.stop-actions > summary').click();await stop().locator('input[type=number]').fill('12');await stop().locator('input[type=number]').press('Tab');
+  await stage(page,'drive');await page.locator('#drive-undo').click();await page.waitForFunction(()=>!document.querySelector('#drive-visited').disabled);assert.match(await page.locator('#schedule-summary').innerText(),/24 min viewing/);assert.match(await page.locator('#route-detail').innerText(),/24 min viewing/);
+  await planDisplays(page);await stop().locator('.stop-actions > summary').click();await stop().locator('input[type=number]').fill('7');await stop().locator('input[type=number]').press('Tab');await stage(page,'drive');assert.match(await page.locator('#schedule-summary').innerText(),/19 min viewing/);assert.match(await page.locator('#route-detail').innerText(),/19 min viewing/);
+  const state=await page.evaluate(()=>JSON.parse(localStorage.getItem('glowroute:projects:v2')).projects[0].state);assert.equal(state.displays.find(display=>display.id===id).viewingOverride,7);await endDrive(page);assert.deepEqual(errors,[]);await context.close();pass('Live Drive undo rebinds saved display identities so viewing edits before and after undo update both schedule and restored budget totals');
+ }
+ // Fast iteration may target the new scenarios; CI always runs the full suite.
+ if(!process.env.GLOWROUTE_BROWSER_NEW_ONLY){
  for(const viewport of [{width:1366,height:900},{width:390,height:844}]){
   const {context,page,control,errors}=await prepare(browser,viewport),requests=[];
   assert.equal(await page.locator('#workflow-plan').getAttribute('aria-selected'),'true');assert.deepEqual(await page.evaluate(()=>window.__initialMapCenter),[39.73,-104.95]);
@@ -136,9 +242,9 @@ try{
   const {context,page,control,errors}=await prepare(browser,{width:390,height:844});await optimize(page);await page.locator('#drive-start').click();
   await page.locator('#drive-note-details summary').click();await page.locator('#drive-notes').fill('Resume this private memory');await page.reload();control.fail=true;
   await page.locator('#drive-resume').click();await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Could not reroute'));
-  assert(await page.locator('#stage-drive').isVisible());assert(await page.locator('#drive-retry').isVisible());assert(await page.locator('#drive-retry').isEnabled());assert(await page.locator('#drive-end').isVisible());assert(await page.locator('#drive-end').isEnabled());
+  assert(await page.locator('#stage-drive').isVisible());assert(await page.locator('#drive-retry').isVisible());assert(await page.locator('#drive-retry').isEnabled());await details(page,'drive-more');assert(await page.locator('#drive-end').isVisible());assert(await page.locator('#drive-end').isEnabled());
   assert.equal(await page.locator('#drive-notes').inputValue(),'Resume this private memory');assert.match(await page.locator('#drive-current').innerText(),/4 remaining/);assert.equal(await page.locator('#metrics .metric').count(),0);
-  control.fail=false;await page.locator('#drive-retry').click();await page.waitForFunction(()=>!document.querySelector('#drive-visited').disabled);await page.locator('#drive-end').click();
+  control.fail=false;await page.locator('#drive-retry').click();await page.waitForFunction(()=>!document.querySelector('#drive-visited').disabled);await endDrive(page);
   assert.deepEqual(errors,[]);await context.close();pass('resume during road-service outage exposes Retry/End and preserves remaining stops and rider feedback; retry recovers');
  }
  {
@@ -147,7 +253,7 @@ try{
   await page.route(/^https:\/\/nominatim\.openstreetmap\.org\/search\?/,async route=>{await new Promise(resolve=>setTimeout(resolve,350));await route.fulfill({json:[{lat:'39.73',lon:'-104.95',display_name:'Saved starting point'}]});});
   await page.reload();const requested=page.waitForRequest(request=>request.url().startsWith('https://nominatim.openstreetmap.org/search?'));await page.locator('#drive-resume').click();await requested;await stage(page,'discover');
   await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Rerouted 4 remaining'));assert(await page.locator('#stage-discover').isVisible());assert.equal(await page.locator('body').evaluate(el=>el.classList.contains('driving')),false);
-  await stage(page,'drive');assert(await page.locator('#drive-end').isVisible());await page.locator('#drive-end').click();assert.deepEqual(errors,[]);await context.close();pass('delayed resume geocoding respects a newer stage choice while restoring the session and keeping controls reachable');
+  await stage(page,'drive');await details(page,'drive-more');assert(await page.locator('#drive-end').isVisible());await endDrive(page);assert.deepEqual(errors,[]);await context.close();pass('delayed resume geocoding respects a newer stage choice while restoring the session and keeping controls reachable');
  }
  {
   const {context,page,errors}=await prepare(browser,{width:390,height:844});await planDisplays(page);await page.locator('.stop-actions summary').first().click();await page.locator('.stop-menu button[title="Place or correct this stop on the map"]').first().click();
@@ -196,7 +302,7 @@ try{
   saved=await project();const corrected=saved.displays.find(d=>d.id==='demo2');assert.equal(corrected.lat,39.7322);assert.equal(corrected.geoSource,'manual');assert.equal(corrected.address,displays[1].address);assert.deepEqual(await textOrder(page),before);assert.equal(tableCalls(),baseline+1);assert.match(await page.locator('#route-detail').innerText(),/Totals use the mapped itinerary/);
   control.fail=true;popup=await open('demo2');await popup.getByRole('button',{name:'Move later'}).click();await page.waitForFunction(()=>!document.querySelector('#optimize').disabled);assert.match(await page.locator('#status').innerText(),/drawing failed/);assert.equal(await page.locator('.itinerary-row').count(),4);assert.match(await page.locator('#route-detail').innerText(),/road-matrix legs/);
   control.fail=false;await page.locator('#map-edit-back').click();await page.locator('#drive-start').click();popup=await open('demo2');assert.equal(await popup.getByRole('button',{name:'Remove from drive'}).count(),0);assert.equal(await popup.getByRole('button',{name:'Open Live Drive',includeHidden:true}).count(),1);assert(await page.locator('#map-edit-notice').isHidden());
-  await page.locator('#drive-end').click();assert.deepEqual(errors,[]);await context.close();pass(`${viewport.width}px: map move/remove/undo, must-see confirmation, saved display preservation, fixed navigation endpoints, pin cancel/save, outage and Live Drive safety`);
+  await endDrive(page);assert.deepEqual(errors,[]);await context.close();pass(`${viewport.width}px: map move/remove/undo, must-see confirmation, saved display preservation, fixed navigation endpoints, pin cancel/save, outage and Live Drive safety`);
  }
  {
   const {context,page,control,errors}=await prepare(browser,{width:390,height:844});
@@ -342,7 +448,7 @@ try{
   await page.locator('#drive-full').click();await shareDetails(page);await page.locator('#share-link').click();assert(!(await page.evaluate(()=>window.__copied)).includes('Available after outage'));await page.locator('#drive-full').click();
   assert.equal(await page.evaluate(()=>window.injected),undefined);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await page.locator('#drive-visited').click();await page.waitForFunction(()=>!document.querySelector('#drive-visited').disabled);await page.locator('#drive-visited').click();await page.waitForFunction(()=>document.querySelector('#drive-current').textContent.includes('All displays completed'));
-  assert(await feedback.isHidden());assert(await rating.locator('input').first().isDisabled());await page.locator('#drive-end').click();assert(await feedback.isHidden());assert.deepEqual(errors,[]);await context.close();
+  assert(await feedback.isHidden());assert(await rating.locator('input').first().isDisabled());await endDrive(page);assert(await feedback.isHidden());assert.deepEqual(errors,[]);await context.close();
   pass(`${viewport.width}px: current-stop rating/favorite/notes, immediate save, reload/resume, list sync, visit/skip binding, outage editing and sharing privacy`);
  }
  {
@@ -384,7 +490,7 @@ try{
   await page.locator('#drive-visited').click();await page.waitForFunction(()=>document.querySelector('#drive-current').textContent.includes('2 remaining')&&!document.querySelector('#drive-visited').disabled);
   await page.locator('#drive-full').click();assert(await page.locator('#itinerary').isVisible());
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
-  await page.locator('#drive-end').click();
+  await endDrive(page);
   pass(`${viewport.width}px: focused drive, failed skip recovery, reload/resume, visited progress, full itinerary, no horizontal overflow`);
   // Shared import creates a separate project and leaves omitted endpoints blank.
   await page.goto(share);await page.locator('#shared-import').click();assert.equal(await page.locator('#project-picker option').count(),2);assert.equal(await page.locator('#start-input').inputValue(),'');assert.equal(await page.locator('.stop').count(),4);
@@ -491,5 +597,6 @@ try{
   failDirectory=true;const cached=await page.evaluate(async()=>{const r=await fetch('./directory/catalog.json');return r.headers.get('X-GlowRoute-Cached');});assert.equal(cached,'true');failDirectory=false;
   await context.setOffline(true);await page.reload();assert.match(await page.title(),/GlowRoute/);assert.equal(await page.evaluate(()=>localStorage.getItem('keep-this-project')),'unchanged');await context.close();pass('PWA: release update, cache cleanup scoped to GlowRoute, local data retained, marked cached directory, offline shell');
  }
- console.log(`All ${checks} browser scenario groups passed.`);
+ }
+ console.log(`All ${checks} ${process.env.GLOWROUTE_BROWSER_NEW_ONLY?'new ':''}browser scenario groups passed.`);
 }finally{await browser.close();await new Promise(r=>server.close(r));}

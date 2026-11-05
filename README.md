@@ -8,11 +8,11 @@ GlowRoute is a **free, open-source holiday display route planner** that helps yo
 
 Built for phones and desktops. No account required.
 
-![GlowRoute v1.8 Drive stage with route summary and map](docs/screenshots/desktop-route.png)
+![GlowRoute v1.9 Drive stage with route summary and connected itinerary/map selection](docs/screenshots/desktop-route.png)
 
 *Genuine browser capture with real OSM mapping and OSRM routing. Public Denver landmarks illustrate the workflow; they are not advertised holiday display listings.*
 
-<p align="center"><img src="docs/screenshots/mobile-drive.png" width="300" alt="GlowRoute v1.8 mobile Live Drive showing the next public landmark, navigation, progress, visit and skip actions, and star ratings" /></p>
+<p align="center"><img src="docs/screenshots/mobile-drive.png" width="300" alt="GlowRoute v1.9 mobile Live Drive showing the next public landmark, navigation, progress, visit and skip actions, and star ratings" /></p>
 
 **[🚗 Open GlowRoute](https://jacobmgoodnight.github.io/glowroute/)** · [View source](https://github.com/jacobmgoodnight/glowroute) · [Report an issue or suggest a display](https://github.com/jacobmgoodnight/glowroute/issues)
 
@@ -27,6 +27,8 @@ Built for phones and desktops. No account required.
 **New in v1.7.1:** edit an optimized drive directly from its numbered map pins: change the visit order, remove a stop from the drive, or correct its pin. See the [workflow review and next priorities](docs/UX-REVIEW-v1.7.1.md).
 
 **New in v1.8:** **Discover → Plan → Drive** gives the existing features a clearer home, with optional tools collapsed until needed. Optimization opens the itinerary for review; starting Live Drive remains a separate choice. See the [workflow release notes](docs/RELEASE-v1.8.md).
+
+**New in v1.9:** connected itinerary/map selection, adding a stop without losing your chosen order, one-step undo for an accidental visit/skip, and quieter Live Drive actions. See the [v1.9 release notes](docs/RELEASE-v1.9.md).
 
 ## ✨ What can GlowRoute do?
 
@@ -59,6 +61,8 @@ Route comparisons and sharing are expandable in Drive. Saved-drive maintenance, 
 
 After **Optimize my route**, choose **Edit stops on map** or tap a numbered stop pin. Its popup shows the display name, address and position in the drive.
 
+Tap a display name in **Your stop order** to reveal and highlight its pin. The pin's **Show in itinerary** returns to the matching highlighted row and focuses it. Selection stays in this tab and does not change saved data or request a new route/geocode.
+
 - **Move earlier / Move later** changes one stop's visit order while keeping the other stops in their relative order. Start and Finish stay fixed.
 - **Remove from drive** excludes the stop without deleting its saved display, rating, favorite or notes. Removing a **Must see** stop asks you to confirm clearing that flag. You can select the display again in the saved list.
 - **Adjust map pin** lets you tap a corrected location, then choose **Save pin** or **Cancel**. Saving retains the address and current visit order while updating road estimates.
@@ -66,9 +70,17 @@ After **Optimize my route**, choose **Edit stops on map** or tap a numbered stop
 
 On phones, map editing opens a focused map; its **Back** action returns to the stage you came from. Route links and estimates update after edits; a routing failure is shown rather than reporting stale road estimates as current. Manual changes are your chosen order; optimize again when you want new optimized alternatives. During Live Drive, use the existing **Visited** and **Skip & reroute** actions instead of map editing.
 
+### Add a stop after optimizing
+
+In **Drive**, choose **+ Add a stop** before starting Live Drive. Choose a saved display outside the current itinerary, or enter a new display name and full street address/coordinates. Pick **Before the first display** or **After** an existing display, then **Add stop & update route**. Start, Finish and the other stops keep their order; the app does not re-optimize them automatically.
+
+For road routes, location and routing checks finish before the addition is applied. Canceling, a failed lookup/route request or switching projects leaves the previous itinerary and saved displays intact. Rough routes remain explicitly approximate. The limits are 70 saved displays and 68 routed displays, with duplicate checks. Adding viewing time or mileage can exceed an enabled trip budget; review the updated warning and totals. Insertion is unavailable during an active Live Drive.
+
 **Desktop layout:** Drag the divider between the planner and map to resize them; your browser remembers the width. Focus the divider and use Left/Right arrows (Shift for larger steps), Home/End for the limits, or Enter to reset. Double-click also resets; Escape cancels a drag. Phones keep the stacked layout.
 
 **During a drive:** A passenger or parked driver can tap one of five stars to rate the current display in one step, toggle Favorite under **Remember this display**, or expand **Private notes**. Keyboard users can focus the stars and use arrow keys. Ratings save immediately; notes save as you type, before marking the display Visited or skipping it. Feedback belongs to that display and is retained when resuming an interrupted drive. It stays on this browser/device and is excluded from shared itineraries; it does not sync with another rider's phone. Private backups and JSON stop exports can include these notes. Editing feedback does not rearrange the active route.
+
+**Undo an accidental visit or skip:** **Undo last action** restores the previous stop, order, progress and visit/skip status—even while rerouting is pending, after rerouting fails, or after the last display. It keeps ratings, favorites and notes you have edited. This is one level of undo in the current tab, cleared when starting, resuming or ending a drive or changing its plan/project. It is separate from **Undo last edit** for pre-drive map changes. **More actions** holds optional GPS rerouting and **End drive**; **Retry without GPS** appears only after a routing/location failure.
 
 ### Bring a list of your own displays
 
