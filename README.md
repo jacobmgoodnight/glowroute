@@ -4,7 +4,7 @@
 
 **Make every festive mile count.**
 
-GlowRoute is a **free, open-source holiday display route planner** that helps you discover Halloween decorations and Christmas light displays, organize your favorites, and plan a more efficient driving tour—with less backtracking and more time to enjoy the displays.
+GlowRoute is a **free, open-source Halloween and Christmas display tour planner**. Browse season-labeled listings or add your own stops, save favorites, optimize driving routes, and follow a tour in Live Drive mode—with less backtracking and more time enjoying the displays. Listings are not automatically verified as operating this season.
 
 Built for phones and desktops. No account required.
 
@@ -18,17 +18,7 @@ Built for phones and desktops. No account required.
 
 > **Beta:** GlowRoute is an independently maintained route-planning tool, not a live directory of verified operating displays. Check listing dates, locations, hours and navigation before heading out.
 
-**New in v1.5:** nationwide routing, dependable time/distance selection, cancellable and cached routing requests, a simpler first visit, focused mobile driving with resume, safer backups/sharing and reliable PWA updates. Read the [changelog](CHANGELOG.md), [audit and validation report](docs/AUDIT-v1.5.md), or [prioritized roadmap](ROADMAP.md).
-
-**New in v1.6:** clearer seasonal/source context, directory sorting and filtered bulk selection, import diagnostics and stable review edits, plus personal preferences preserved in stop-list JSON round-trips. Follow-up patches add an adjustable desktop planner/map divider and current-display ratings, favorites and private notes in Live Drive Mode. See the [v1.6 scope and validation](docs/RELEASE-v1.6.md).
-
-**New in v1.7:** nearby discovery from known pins, reviewed tour suggestions, optional departure/arrival schedules, per-display viewing times, richer source facts and filters, and an authorized-feed review pipeline. No new services, accounts or runtime dependencies. See the [code audit and release details](docs/RELEASE-v1.7.md), [feed authorization contract](feeds/README.md), and [Explorer backup/retirement checklist](docs/RETIREMENT.md).
-
-**New in v1.7.1:** edit an optimized drive directly from its numbered map pins: change the visit order, remove a stop from the drive, or correct its pin. See the [workflow review and next priorities](docs/UX-REVIEW-v1.7.1.md).
-
-**New in v1.8:** **Discover → Plan → Drive** gives the existing features a clearer home, with optional tools collapsed until needed. Optimization opens the itinerary for review; starting Live Drive remains a separate choice. See the [workflow release notes](docs/RELEASE-v1.8.md).
-
-**New in v1.9:** connected itinerary/map selection, adding a stop without losing your chosen order, one-step undo for an accidental visit/skip, and quieter Live Drive actions. See the [v1.9 release notes](docs/RELEASE-v1.9.md).
+**Latest (v1.9):** Select itinerary stops directly from the map, add a stop without losing your route order, undo accidental visit/skip actions, and enjoy a simpler Live Drive view. See [v1.9 release notes](docs/RELEASE-v1.9.md), the [changelog](CHANGELOG.md), [earlier release documentation](docs/RELEASE-v1.8.md), [roadmap](ROADMAP.md), and the [Explorer migration checklist](docs/RETIREMENT.md).
 
 ## ✨ What can GlowRoute do?
 
