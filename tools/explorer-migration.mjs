@@ -178,7 +178,6 @@ export function convertExplorerArchive(archive, existingBackup, options={}) {
   if (isObject(active) && Array.isArray(active.ids) && active.ids.length) {
     const localIds=new Map(local.filter(d=>isObject(d)).map(d=>[d.id,d]));
     append('Explorer active tour',active.ids.map(id=>localIds.get(id)).filter(Boolean),active,'active');
-    report.missingTourStops+=active.ids.filter(id=>!localIds.has(id)).length;
   }
   // Capture the entire personal library too, including displays never in a tour.
   append('Explorer saved displays',local,null,'collection');
