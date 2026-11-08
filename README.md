@@ -18,7 +18,7 @@ Built for phones and desktops. No account required.
 
 > **Beta:** GlowRoute is an independently maintained route-planning tool, not a live directory of verified operating displays. Check listing dates, locations, hours and navigation before heading out.
 
-**Latest (v1.9):** Select itinerary stops directly from the map, add a stop without losing your route order, undo accidental visit/skip actions, and enjoy a simpler Live Drive view. See [v1.9 release notes](docs/RELEASE-v1.9.md), the [changelog](CHANGELOG.md), [earlier release documentation](docs/RELEASE-v1.8.md), [roadmap](ROADMAP.md), and the [Explorer migration checklist](docs/RETIREMENT.md).
+**Latest (v1.9):** Select itinerary stops directly from the map, add a stop without losing your route order, undo accidental visit/skip actions, and enjoy a simpler Live Drive view. See [v1.9 release notes](docs/RELEASE-v1.9.md), the [changelog](CHANGELOG.md), [earlier release documentation](docs/RELEASE-v1.8.md), [roadmap](ROADMAP.md), and the [Explorer migration checklist](docs/RETIREMENT.md) and [private archive migration helper](tools/explorer-migration.html) (prepare and review a merged backup before restoring).
 
 ## ✨ What can GlowRoute do?
 

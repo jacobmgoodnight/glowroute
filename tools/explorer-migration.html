@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Move Explorer drives to GlowRoute</title>
+<style>
+:root{color-scheme:dark;font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#101828;color:#f8fafc}
+*{box-sizing:border-box}body{margin:0 auto;max-width:760px;padding:24px 18px 80px}a{color:#93c5fd}h1{font-size:clamp(1.65rem,5vw,2.4rem);line-height:1.2}h2{font-size:1.2rem}p,li{color:#d1d5db}.card{background:#1e293b;border:1px solid #475569;border-radius:16px;padding:18px;margin:18px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}label{display:block;font-weight:650;margin:16px 0 4px}input,select{display:block;width:100%;margin-top:7px;border:1px solid #64748b;background:#0f172a;color:#fff;border-radius:8px;padding:12px;font:inherit}input[type=file]{font-size:.89rem}button{border:0;border-radius:10px;padding:13px 18px;font:inherit;font-weight:700;background:#eab308;color:#111827;cursor:pointer;margin-top:15px}button:disabled{opacity:.45;cursor:default}.secondary{background:#334155;color:#fff}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #facc15;outline-offset:3px}.muted{font-size:.91rem}#result{white-space:pre-wrap}#report-list{padding-left:23px}#report-list li{margin:7px 0}.success{color:#bbf7d0}.error{color:#fecaca}.notice{border-left:3px solid #fbbf24;padding-left:12px}
+</style>
+</head>
+<body>
+<main>
+<a href="../">← Back to GlowRoute</a>
+<h1>Move your Holiday Display Explorer drives</h1>
+<p>Combine your old saved tours, local display collection, favorites, ratings and selected dated notes with your existing GlowRoute projects. Everything is processed <strong>in this browser</strong>; no files are uploaded.</p>
+<div class="card">
+<h2>1. Back up both apps first</h2>
+<ol>
+<li>In <a href="https://github.com/jacobmgoodnight/glowroute/blob/main/docs/RETIREMENT.md">the Explorer retirement checklist</a>, follow the steps to export a <strong>complete private Explorer archive</strong> from each old browser or installed app. Ordinary <code>displays.json</code> is not enough for tours and pictures.</li>
+<li>In GlowRoute, open <strong>Manage saved drives &amp; backups → Backup all years</strong> and save your existing GlowRoute JSON.</li>
+<li>Keep both originals and a second copy somewhere private. Do not share the Explorer archive or post it on GitHub. If Explorer was used on multiple devices or profiles, repeat this tool separately for each complete archive, using the <strong>previous merged backup</strong> as the GlowRoute input for the next pass.</li>
+</ol>
+</div>
+<form id="form" class="card">
+<h2>2. Choose the two backup files</h2>
+<label>Explorer complete private archive (.json)
+<input type="file" id="explorer" required accept=".json,application/json"></label>
+<label>Existing GlowRoute “Backup all years” (.json)
+<input type="file" id="glowroute" required accept=".json,application/json"></label>
+<div class="grid">
+<label>Target season year
+<input type="number" id="year" min="2000" max="2100" required value="2026"></label>
+<label>Holiday for unclassified tours
+<select id="holiday"><option>Halloween</option><option>Christmas</option><option selected>Other</option></select></label>
+</div>
+<button type="submit">Review migration</button>
+<p class="muted">This creates a new merged backup, without modifying the originals or any saved data in your current GlowRoute tab. Nothing is written to local storage here.</p>
+</form>
+<section class="card" id="results" hidden aria-live="polite">
+<h2>3. Review and download</h2>
+<p id="summary"></p>
+<ul id="report-list"></ul>
+<p class="notice"><strong>Personal photos do not move into GlowRoute yet.</strong> They remain in the original private archive. Also check each address, season, starting point and route order after importing.</p>
+<button id="download" type="button">Download merged GlowRoute backup</button>
+<p class="muted">To finish: open GlowRoute → Manage saved drives &amp; backups → Restore backup, select this merged file, confirm the listed projects, and test a few drives before retiring Explorer. Restoring replaces that browser’s saved projects with the merged set.</p>
+</section>
+<p class="error" id="error" role="alert"></p>
+</main>
+<script type="module">
+import {convertExplorerArchive} from './explorer-migration.mjs';
+const $=id=>document.getElementById(id);
+$('year').value=String(new Date().getFullYear());
+let generated=null;
+function downloadJSON(name,data) {
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);
+}
+$('form').addEventListener('submit',async event=>{
+  event.preventDefault();$('error').textContent='';$('results').hidden=true;generated=null;
+  try {
+    const oldFile=$('explorer').files[0],newFile=$('glowroute').files[0];
+    if(!oldFile||!newFile)throw Error('Choose both original backups first.');
+    if(oldFile.size>60_000_000||newFile.size>2_000_000)throw Error('A selected backup is too large to process safely.');
+    const archive=JSON.parse(await oldFile.text()),backup=JSON.parse(await newFile.text());
+    const result=convertExplorerArchive(archive,backup,{year:Number($('year').value),fallbackHoliday:$('holiday').value});
+    generated=result.backup;
+    const report=result.report;
+    $('summary').textContent=report.importedProjects.length+' Explorer projects added ('+report.importedStops+' display copies) to '+report.priorGlowRouteProjects+' existing GlowRoute projects. Your existing projects stay in the merged file.';
+    const list=$('report-list');list.replaceChildren();
+    const items=[
+      ...report.importedProjects.map(p=>p.name+' — '+p.holiday+' '+p.year+', '+p.stops+' stops'),
+      report.originalMemories+' memory records and '+report.originalPhotos+' personal photos were found in Explorer.',
+      ...report.warnings
+    ];
+    for(const message of items){const li=document.createElement('li');li.textContent=message;list.append(li);}
+    $('results').hidden=false;$('results').scrollIntoView({behavior:'smooth',block:'start'});
+  }catch(error){$('error').textContent='Migration could not be prepared: '+(error?.message||'Invalid backup');}
+});
+$('download').addEventListener('click',()=>{
+  if(!generated)return;
+  downloadJSON('glowroute-merged-explorer-'+new Date().toISOString().slice(0,10)+'.json',generated);
+});
+</script>
+</body>
+</html>
