@@ -80,6 +80,7 @@ function convertDisplay(raw, context, report, overrides={}, visited=false) {
   }
   const valid = Number.isFinite(raw.lat) && Number.isFinite(raw.lng) &&
     Math.abs(raw.lat) <= 90 && Math.abs(raw.lng) <= 180;
+  context.seenIds.add(id);
   const memory = context.memories.get(id);
   const info = displayInfo(raw);
   const sources = Array.isArray(info.sources) ? info.sources : [];
@@ -126,13 +127,13 @@ export function convertExplorerArchive(archive, existingBackup, options={}) {
     priorGlowRouteProjects:original.projects.length,
     importedProjects:[],importedStops:0,skippedIncomplete:0,skippedDemo:0,
     missingTourStops:0,notesTruncated:0,
-    originalMemories:memories.size,
+    originalMemories:memories.size,unmappedMemories:0,unmappedFavorites:0,
     originalPhotos:archive.memories.values.reduce((n,m)=>n+(Array.isArray(m?.photos)?m.photos.length:0),0),
     warnings:[]
   };
   if (archive.memories.storePresent !== true)
     report.warnings.push('Explorer memory database was not present in this archive; verify whether it existed on that device.');
-  const context={favorites,memories};
+  const context={favorites,memories,seenIds:new Set()};
   const projects=original.projects.map(p=>({...p,state:{...p.state}}));
   const names=[...projects];
   let migrated=0;
@@ -181,6 +182,10 @@ export function convertExplorerArchive(archive, existingBackup, options={}) {
   }
   // Capture the entire personal library too, including displays never in a tour.
   append('Explorer saved displays',local,null,'collection');
+  report.unmappedMemories=[...memories.keys()].filter(id=>!context.seenIds.has(id)).length;
+  report.unmappedFavorites=[...favorites].filter(id=>!context.seenIds.has(id)).length;
+  if (report.unmappedMemories) report.warnings.push(String(report.unmappedMemories)+' memory records could not be linked to exported saved displays/tours and remain only in the original private archive.');
+  if (report.unmappedFavorites) report.warnings.push(String(report.unmappedFavorites)+' favorites had no recoverable display in this archive; add them manually from the old app.');
   if (!migrated) report.warnings.push('No eligible real-address displays or tours were found in this archive.');
   if (report.originalPhotos) report.warnings.push(String(report.originalPhotos)+' personal photos remain in the original private archive; GlowRoute has no photo restore/gallery yet.');
   if (report.missingTourStops) report.warnings.push(String(report.missingTourStops)+' tour references lacked recoverable display snapshots and were not transferred.');
