@@ -1,4 +1,16 @@
-# Holiday Display Explorer retirement checklist
+# Holiday Display Explorer retirement
+
+**Status: retired.** On November 13, 2026 the owner confirmed that Holiday Display Explorer is retired and that its saved displays do not need to be preserved. GlowRoute is the only maintained app. No migration is planned, and the archive migration utility proposed in PR #12 is no longer needed.
+
+What this means in GlowRoute:
+
+- **Load Explorer's older discoveries** reads a JSON file from the old Explorer repository. That repository was not publicly reachable when checked on November 13, 2026, so expect the button to report that the snapshot could not be loaded. Existing drives are unaffected. Removing or replacing the button is a separate owner decision.
+- **Load review snapshot** still opens a locally saved copy of that JSON, if one was kept.
+- [`tools/hde-export.js`](../tools/hde-export.js) only works in a browser that still holds old Explorer data on its original origin.
+
+## Historical checklist (superseded)
+
+The steps below were written before retirement, when preserving Explorer's browser-local data was still a goal. They are kept for reference only.
 
 Do not archive or disable it yet. Repository history does not preserve users' browser data. GlowRoute cannot read data stored on a different origin, device or profile; clearing site data can destroy the only copy. GitHub Pages project paths on the same origin can share storage, but that is not a portable backup strategy.
 
@@ -23,4 +35,4 @@ Do not archive or disable it yet. Repository history does not preserve users' br
 - Validate GlowRoute on physical iPhone Safari/VoiceOver and Maps handoff. Confirm licensed regional data coverage is sufficient for your community.
 - When local-only data is independently backed up and any remaining gallery/tour needs are resolved, the owner may archive the old repository as historical reference, pointing to GlowRoute. Archiving/turning off Pages is a separate decision; do not delete old origin data or remove its export path prematurely.
 
-Status: **not ready for unconditional retirement**. P0/P1 foundations are migrated, but complete personal tour/media migration remains a manual, verifiable task. Neither repository was archived, deleted or disabled.
+Status when this checklist was written: not ready for unconditional retirement. Superseded by the owner's November 13, 2026 decision above.
