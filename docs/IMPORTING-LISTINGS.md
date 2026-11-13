@@ -4,6 +4,8 @@ There are two different paths: load the older saved Explorer data, or paste newe
 
 ## Use the existing Explorer discoveries
 
+> **November 2026:** Holiday Display Explorer is retired and its repository was not publicly reachable when checked on November 13, 2026. The load button and the original-file link below will fail unless that repository is public. If you kept a copy of `source-candidates.json`, use **Load review snapshot** instead. See [retirement status](RETIREMENT.md).
+
 1. Open GlowRoute and choose your holiday/year drive.
 2. Open **Discover → Browse displays → More sources & contributions → Load Explorer's older discoveries**.
 3. Choose **Christmas / 2025** for the older Indy with Kids guide, or **Halloween / 2026** for the older FrightMaps references. The button reads the saved JSON in your Holiday Display Explorer GitHub repository only when pressed. It does not fetch the live guides and does not add anything automatically.
